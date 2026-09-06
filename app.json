@@ -1,15 +1,18 @@
 {
   "expo": {
-    "name": "android-app",
-    "slug": "android-app",
+    "name": "Contest App",
+    "slug": "contest-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
+    "scheme": "contestapp",
     "ios": {
       "supportsTablet": true
     },
     "android": {
+      "package": "com.a1.contestapp",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -20,6 +23,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7a757b90-93f5-45a7-a785-b4d6a518ba06"
+      }
     }
   }
 }
