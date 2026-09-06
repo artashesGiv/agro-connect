@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StyleSheet, Text, View } from 'react-native';
 import HomeScreen from './src/screens/HomeScreen';
 import DataScreen from './src/screens/DataScreen';
+import MapScreen from './src/screens/MapScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import { RootTabParamList } from './src/navigation/types';
 
@@ -21,6 +22,7 @@ function TabBarIcon({
   const icons: Record<string, string> = {
     Home: '🏠',
     Data: '📊',
+    Map: '🗺️',
     Settings: '⚙️',
   };
   return <Text style={{ fontSize: size, color }}>{icons[name]}</Text>;
@@ -57,6 +59,14 @@ export default function App() {
           component={DataScreen}
           options={{
             title: 'Данные',
+            headerShown: true,
+          }}
+        />
+        <Tab.Screen
+          name="Map"
+          component={MapScreen}
+          options={{
+            title: 'Карта',
             headerShown: true,
           }}
         />
