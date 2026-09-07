@@ -24,20 +24,6 @@ module.exports = {
     web: {
       favicon: './assets/favicon.png',
     },
-    plugins: [
-      [
-        'expo-location',
-        {
-          locationWhenInUsePermission: 'Приложению нужен доступ к геолокации, чтобы показать ваше текущее местоположение на карте полей.',
-        },
-      ],
-      [
-        'react-native-maps',
-        {
-          androidGoogleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '',
-        },
-      ],
-    ],
     extra: {
       eas: {
         projectId: '7a757b90-93f5-45a7-a785-b4d6a518ba06',
