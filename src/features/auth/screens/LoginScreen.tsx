@@ -1,53 +1,92 @@
 import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { Button, type MD3Theme } from 'react-native-paper';
+import { Keyboard, ScrollView, StyleSheet, Text } from 'react-native';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Button, HelperText, type MD3Theme } from 'react-native-paper';
 
 import { useAuth } from '../../../services/auth';
 import { useAppTheme } from '../../../theme';
 import type { LoginScreenProps } from '../../../navigation/types';
-
-// Заглушка: форм пока нет. Кнопка «Войти» шлёт демо-данные — сетевой слой
-// обкатывается, экран логина/регистрации и переходы уже работают.
-const DEMO_CREDENTIALS = { email: 'demo@demo.com', password: 'demo' };
+import { FormTextInput } from '../components/FormTextInput';
+import {
+  loginDefaults,
+  loginSchema,
+  type LoginFormValues,
+} from '../schemas/loginSchema';
 
 export default function LoginScreen({ navigation }: LoginScreenProps) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const { status, error, signIn } = useAuth();
-
   const busy = status === 'authenticating';
 
+  const { control, handleSubmit } = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: loginDefaults,
+    mode: 'onTouched',
+  });
+
+  const onSubmit = (values: LoginFormValues) => {
+    Keyboard.dismiss();
+    return signIn(values);
+  };
+
   return (
-    <View style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Вход</Text>
-        <Text style={styles.subtitle}>
-          Форма появится позже. Пока — демо-вход для проверки навигации.
-        </Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text style={styles.title}>Вход</Text>
+      <Text style={styles.subtitle}>Войдите, чтобы продолжить.</Text>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? (
+        <HelperText type="error" visible style={styles.formError}>
+          {error}
+        </HelperText>
+      ) : null}
 
-        <Button
-          mode="contained"
-          loading={busy}
-          disabled={busy}
-          onPress={() => signIn(DEMO_CREDENTIALS)}
-          style={styles.primaryButton}
-          accessibilityLabel="Войти"
-        >
-          Войти
-        </Button>
+      <FormTextInput
+        control={control}
+        name="email"
+        label="Email"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoComplete="email"
+        textContentType="emailAddress"
+        autoCorrect={false}
+      />
 
-        <Button
-          mode="text"
-          disabled={busy}
-          onPress={() => navigation.navigate('Register')}
-          accessibilityLabel="Перейти к регистрации"
-        >
-          Создать аккаунт
-        </Button>
-      </View>
-    </View>
+      <FormTextInput
+        control={control}
+        name="password"
+        label="Пароль"
+        secureTextEntry
+        autoCapitalize="none"
+        autoComplete="current-password"
+        textContentType="password"
+      />
+
+      <Button
+        mode="contained"
+        loading={busy}
+        disabled={busy}
+        onPress={handleSubmit(onSubmit)}
+        style={styles.primaryButton}
+        accessibilityLabel="Войти"
+      >
+        Войти
+      </Button>
+
+      <Button
+        mode="text"
+        disabled={busy}
+        onPress={() => navigation.navigate('Register')}
+        accessibilityLabel="Перейти к регистрации"
+      >
+        Создать аккаунт
+      </Button>
+    </ScrollView>
   );
 }
 
@@ -56,11 +95,11 @@ const makeStyles = (theme: MD3Theme) =>
     container: {
       flex: 1,
       backgroundColor: theme.colors.background,
-      justifyContent: 'center',
     },
     content: {
+      flexGrow: 1,
+      justifyContent: 'center',
       paddingHorizontal: 24,
-      gap: 12,
     },
     title: {
       color: theme.colors.onBackground,
@@ -72,11 +111,10 @@ const makeStyles = (theme: MD3Theme) =>
       color: theme.colors.onSurfaceVariant,
       fontSize: 15,
       lineHeight: 21,
-      marginBottom: 8,
+      marginBottom: 16,
     },
-    error: {
-      color: theme.colors.error,
-      fontSize: 14,
+    formError: {
+      paddingHorizontal: 0,
     },
     primaryButton: {
       marginTop: 8,

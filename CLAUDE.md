@@ -49,9 +49,17 @@ Single-package Expo app, no backend. Entry: `index.ts` → `App.tsx`.
   4. In Paper components with an `icon` prop (`Button`, `List.Icon`, `TextInput.Icon`, `Appbar.Action`): pass the MCI name as a plain string — no `Icon` import needed.
 - Another set (Ionicons, Feather, FontAwesome6, …) all ship inside `@expo/vector-icons`; import the set directly where needed, or generalize `Icon.tsx`.
 
+### Forms
+
+**react-hook-form + zod** (`@hookform/resolvers/zod`). `zod` is pinned to `^3.25.x` on purpose — Expo's tooling already pulls exactly that version transitively, so the pin dedupes to one copy (v3 API: `z.string().email()`).
+
+- **Schema per feature** in `src/features/<feature>/schemas/` — e.g. `loginSchema.ts` exports `loginSchema`, `type LoginFormValues = z.infer<typeof loginSchema>`, and `loginDefaults`. The schema is the single source for both validation and the values type.
+- **`src/features/auth/components/FormTextInput.tsx`** — the bridge: `Controller` (rhf) ↔ Paper `TextInput` + `HelperText`. Generic over the form type (`control` + `name` + `label` + passthrough `TextInputProps`); shows the field's zod error beneath it; renders an eye toggle when `secureTextEntry` is set. This is the pattern for every form — promote it to `src/components/` once a second feature has a form.
+- **Screen wiring:** `useForm<Values>({ resolver: zodResolver(schema), defaultValues, mode: 'onTouched' })`, submit via `handleSubmit(values => signIn(values))`. Field errors render under the fields; a server/auth error comes from `useAuth().error` shown above the form (it self-clears on the next submit).
+
 ### Auth & data layer
 
-On launch the app shows `AuthNavigator` (Login/Register) until there's a session, then `MainTabs`. Screens/forms are still placeholders; the plumbing is real and shaped for a future backend.
+On launch the app shows `AuthNavigator` until there's a session, then `MainTabs`. Login is a real form (email + password); Register is still a placeholder. The backend plumbing is real but stubbed — see below.
 
 - **`src/services/http/`** — the network layer.
   - `config.ts` — `API_BASE_URL` = `process.env.EXPO_PUBLIC_API_URL` ?? JSONPlaceholder (`.env.example` documents it; `.env` is gitignored).
@@ -78,7 +86,7 @@ src/
 ├── navigation/             # composition root: RootNavigator (auth gate), MainTabs, types.ts
 ├── features/               # one folder per feature; a feature owns its screens + the code only it uses
 │   ├── home/    data/    settings/     # the 3 demo tabs, each: screens/<Name>Screen.tsx
-│   ├── auth/               # login/register UI only — screens/{Login,Register}Screen.tsx + navigation/AuthNavigator.tsx
+│   ├── auth/               # auth UI: screens/, navigation/AuthNavigator.tsx, schemas/ (zod), components/FormTextInput.tsx
 │   │                       #   (session logic lives in src/services/auth — see "Auth & data layer")
 │   └── fields/             # (empty) reference template for a real feature:
 │       ├── components/     #   UI used only by this feature
