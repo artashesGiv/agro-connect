@@ -17,7 +17,17 @@ export async function login(credentials: Credentials): Promise<Session> {
 
 export async function register(payload: RegisterPayload): Promise<Session> {
   await http.post('/users', payload, { auth: false });
-  return stubSession(payload.email, payload.name);
+  return stubSession(payload.email, payload.nickname);
+}
+
+// Мок-верификация email. Код не проверяется — принимаем что угодно.
+// TODO(backend): реальный флоу — отдельные запросы start / verify / complete.
+export async function requestCode(email: string): Promise<void> {
+  await http.post('/posts', { email }, { auth: false }).catch(() => {});
+}
+
+export async function verifyCode(email: string, code: string): Promise<void> {
+  await http.post('/posts', { email, code }, { auth: false }).catch(() => {});
 }
 
 function stubSession(email: string, name?: string): Session {

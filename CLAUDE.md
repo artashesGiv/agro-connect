@@ -56,10 +56,11 @@ Single-package Expo app, no backend. Entry: `index.ts` → `App.tsx`.
 - **Schema per feature** in `src/features/<feature>/schemas/` — e.g. `loginSchema.ts` exports `loginSchema`, `type LoginFormValues = z.infer<typeof loginSchema>`, and `loginDefaults`. The schema is the single source for both validation and the values type.
 - **`src/features/auth/components/FormTextInput.tsx`** — the bridge: `Controller` (rhf) ↔ Paper `TextInput` + `HelperText`. Generic over the form type (`control` + `name` + `label` + passthrough `TextInputProps`); shows the field's zod error beneath it; renders an eye toggle when `secureTextEntry` is set. This is the pattern for every form — promote it to `src/components/` once a second feature has a form.
 - **Screen wiring:** `useForm<Values>({ resolver: zodResolver(schema), defaultValues, mode: 'onTouched' })`, submit via `handleSubmit(values => signIn(values))`. Field errors render under the fields; a server/auth error comes from `useAuth().error` shown above the form (it self-clears on the next submit).
+- **Multi-step form (Register):** one `useForm` for the whole wizard in `src/features/auth/forms/RegisterFormProvider.tsx` (RHF `FormProvider`); each step screen pulls it via `useFormContext<RegisterFormValues>()`. A step validates only its own fields with `await trigger(REGISTER_STEP_FIELDS.<step>)` before `navigation.navigate(...)`. `RegisterStepLayout` is the shared step shell (back + progress bar + title + footer button). The steps are screens of a nested native-stack (`RegisterNavigator`), so `navigation.goBack()` moves between steps and, on step 1, bubbles up to `Login`.
 
 ### Auth & data layer
 
-On launch the app shows `AuthNavigator` until there's a session, then `MainTabs`. Login is a real form (email + password); Register is still a placeholder. The backend plumbing is real but stubbed — see below.
+On launch the app shows `AuthNavigator` until there's a session, then `MainTabs`. Login is a real form (email + password); Register is a 4-step wizard (email → confirmation code → name/surname/nickname → password ×2). The confirmation code is UI-only — `authApi.requestCode` / `verifyCode` are fire-and-forget stubs that accept anything. The last step maps the form to `RegisterPayload` and calls `signUp`. The backend plumbing is real but stubbed — see below.
 
 - **`src/services/http/`** — the network layer.
   - `config.ts` — `API_BASE_URL` = `process.env.EXPO_PUBLIC_API_URL` ?? JSONPlaceholder (`.env.example` documents it; `.env` is gitignored).
@@ -67,7 +68,7 @@ On launch the app shows `AuthNavigator` until there's a session, then `MainTabs`
   - `authToken.ts` — in-memory token holder (`get/set/clear`), the synchronous source the client reads per request. Written only by `AuthProvider`.
 - **`src/services/auth/`** — the session.
   - `AuthProvider` + `useAuth()` → `{ status, user, error, signIn, signUp, signOut }`. `status`: `loading | authenticating | authenticated | unauthenticated`. Any feature may import `useAuth`.
-  - `authApi.ts` — `login`/`register` hit JSONPlaceholder `POST /users`; **the response is ignored and a stub `Session` is returned** — replace endpoints + response mapping when the real API lands (marked `TODO(backend)`).
+  - `authApi.ts` — `login`/`register` hit JSONPlaceholder `POST /users`, `requestCode`/`verifyCode` hit `POST /posts`; **responses are ignored and a stub `Session` is returned** — replace endpoints + response mapping when the real API lands (marked `TODO(backend)`). `useAuth()` covers session-changing calls; `authApi` is also re-exported for the stateless code-verification calls the register steps make directly.
   - `tokenStorage.ts` — the access token in `expo-secure-store` (key `auth.accessToken`). The only thing that survives a restart.
 - **Three tiers for the session — know which holds what:**
   | tier | where | lifetime | holds | read by |
@@ -86,7 +87,8 @@ src/
 ├── navigation/             # composition root: RootNavigator (auth gate), MainTabs, types.ts
 ├── features/               # one folder per feature; a feature owns its screens + the code only it uses
 │   ├── home/    data/    settings/     # the 3 demo tabs, each: screens/<Name>Screen.tsx
-│   ├── auth/               # auth UI: screens/, navigation/AuthNavigator.tsx, schemas/ (zod), components/FormTextInput.tsx
+│   ├── auth/               # auth UI: screens/ (+ screens/register/ wizard), navigation/ (Auth + nested Register),
+│   │                       #   schemas/ (zod), forms/RegisterFormProvider.tsx, components/ (FormTextInput, RegisterStepLayout)
 │   │                       #   (session logic lives in src/services/auth — see "Auth & data layer")
 │   └── fields/             # (empty) reference template for a real feature:
 │       ├── components/     #   UI used only by this feature

@@ -11,8 +11,10 @@ export type Credentials = {
 
 export type RegisterPayload = {
   email: string;
+  firstName: string;
+  lastName: string;
+  nickname: string;
   password: string;
-  name: string;
 };
 
 export type AuthUser = {
