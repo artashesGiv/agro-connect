@@ -21,7 +21,7 @@ export function RootNavigator() {
 
   return (
     <NavigationContainer theme={navigationTheme}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       {status === 'authenticated' ? <MainTabs /> : <AuthNavigator />}
     </NavigationContainer>
   );

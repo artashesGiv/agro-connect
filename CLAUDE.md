@@ -33,8 +33,8 @@ Single-package Expo app, no backend. Entry: `index.ts` → `App.tsx`.
 
 - **React Native Paper** (`react-native-paper`, MD3) is the component library. Icons come from `@expo/vector-icons` (`expo-font` is its required peer dep) — Paper auto-detects it, no icon config needed.
 - **`src/theme/theme.ts` is the single source for the palette.** Edit the `brand` object at the top (≈10 hexes: `primary`, `background`, `surface`, `text`, `border`, `danger`, …) and everything follows. It builds:
-  - `appTheme: MD3Theme` — `MD3DarkTheme` with `colors` overridden from `brand` (mapped to MD3 roles). One fixed dark theme — no light/dark switching. To go light: base on `MD3LightTheme` + `dark: false`.
-  - `navigationTheme` — React Navigation theme built from the same `appTheme.colors`.
+  - `appTheme: MD3Theme` — `MD3LightTheme` with `colors` overridden from `brand` (mapped to MD3 roles). One fixed **light "wheat + coffee"** theme (warm cream surfaces `#F6EBD2` / `#EEDFBE`, brown primary `#6B4A2E`) — no light/dark switching. To go dark: base on `MD3DarkTheme` + `DarkTheme` (from `@react-navigation/native`) + dark `brand` values (a full "earth + wheat" dark palette is recorded in the `theme-palettes` memory).
+  - `navigationTheme` — React Navigation theme (`DefaultTheme` base) built from the same `appTheme.colors`.
 - `src/theme/useAppTheme.ts` — `useAppTheme()`, a typed `useTheme<MD3Theme>()` wrapper. `src/theme/index.ts` re-exports `appTheme`, `navigationTheme`, `useAppTheme`.
 - **Screens get colors only from `useAppTheme()`** — never hard-code hex. Pattern: `const styles = useMemo(() => makeStyles(theme), [theme])` where `makeStyles(theme: MD3Theme)` returns `StyleSheet.create({...})` referencing `theme.colors.*`. See any of the 3 screens.
 
