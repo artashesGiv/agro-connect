@@ -21,8 +21,12 @@ There is no test runner, linter, or formatter configured. "Tests" in `SPEC.md` m
 
 Single-package Expo app, no backend. Entry: `index.ts` → `App.tsx`.
 
-- **`App.tsx`** is the whole navigation shell. Provider tree: `SafeAreaProvider` → `PaperProvider theme={appTheme}` → `NavigationContainer theme={navigationTheme}` → one `createBottomTabNavigator` with `Home`/`Data`/`Settings`. Tab bar and headers take their colors from `navigationTheme` automatically — `App.tsx` sets no colors of its own beyond the emoji `TabBarIcon`. One `<StatusBar style="light">` here, not per-screen.
-- **`app.config.js`** — dynamic Expo config (replaces the old `app.json`). Portrait-locked, `userInterfaceStyle: 'dark'`, Android package `com.a1.contestapp` (placeholder — replace before final submission), EAS `projectId` in `extra.eas`.
+- **`App.tsx`** is tiny: provider tree only — `SafeAreaProvider` → `PaperProvider theme={appTheme}` → `AuthProvider` → `RootNavigator`. All navigator wiring lives in `src/navigation/`.
+- **`src/navigation/`** — the composition root for navigation:
+  - `RootNavigator.tsx` — the auth gate. `status === 'loading'` → blank background view (native splash still up); else `<NavigationContainer theme={navigationTheme}>` + `<StatusBar style="light">` wrapping either `<MainTabs>` (authenticated) or `<AuthNavigator>` (not). Whole navigator is swapped, never `navigate()`.
+  - `MainTabs.tsx` — the bottom-tab navigator (`Home`/`Data`/`Settings`) + `TAB_ICONS`. Colors come from `navigationTheme` automatically.
+  - `types.ts` — `RootTabParamList` + `AuthStackParamList` and per-screen prop aliases. Add new routes HERE first.
+- **`app.config.js`** — dynamic Expo config (replaces the old `app.json`). Portrait-locked, `userInterfaceStyle: 'dark'`, `plugins: ['expo-secure-store']`, Android package `com.a1.contestapp` (placeholder — replace before final submission), EAS `projectId` in `extra.eas`.
 - **`eas.json`** — `preview` (internal-distribution APK) and `production` (app-bundle) profiles only.
 
 ### UI & theming
@@ -41,19 +45,41 @@ Single-package Expo app, no backend. Entry: `index.ts` → `App.tsx`.
 - **Add a new icon:**
   1. Find its name at https://icons.expo.fyi (filter to `MaterialCommunityIcons`) or https://pictogrammers.com/library/mdi/ — a kebab-case id like `magnify`, `chevron-right`, `trash-can-outline`.
   2. In a screen: `import { Icon } from '<rel>/components/Icon'` then `<Icon name="magnify" color={theme.colors.primary} />`.
-  3. In the tab bar: add an entry to `TAB_ICONS` in `App.tsx` (filled name + its `-outline` variant).
+  3. In the tab bar: add an entry to `TAB_ICONS` in `src/navigation/MainTabs.tsx` (filled name + its `-outline` variant).
   4. In Paper components with an `icon` prop (`Button`, `List.Icon`, `TextInput.Icon`, `Appbar.Action`): pass the MCI name as a plain string — no `Icon` import needed.
 - Another set (Ionicons, Feather, FontAwesome6, …) all ship inside `@expo/vector-icons`; import the set directly where needed, or generalize `Icon.tsx`.
+
+### Auth & data layer
+
+On launch the app shows `AuthNavigator` (Login/Register) until there's a session, then `MainTabs`. Screens/forms are still placeholders; the plumbing is real and shaped for a future backend.
+
+- **`src/services/http/`** — the network layer.
+  - `config.ts` — `API_BASE_URL` = `process.env.EXPO_PUBLIC_API_URL` ?? JSONPlaceholder (`.env.example` documents it; `.env` is gitignored).
+  - `httpClient.ts` — `http.get/post/put/patch/delete`, `HttpError`, `AbortController` timeout, JSON in/out. Attaches `Authorization: Bearer <token>` from `authToken` unless `{ auth: false }`.
+  - `authToken.ts` — in-memory token holder (`get/set/clear`), the synchronous source the client reads per request. Written only by `AuthProvider`.
+- **`src/services/auth/`** — the session.
+  - `AuthProvider` + `useAuth()` → `{ status, user, error, signIn, signUp, signOut }`. `status`: `loading | authenticating | authenticated | unauthenticated`. Any feature may import `useAuth`.
+  - `authApi.ts` — `login`/`register` hit JSONPlaceholder `POST /users`; **the response is ignored and a stub `Session` is returned** — replace endpoints + response mapping when the real API lands (marked `TODO(backend)`).
+  - `tokenStorage.ts` — the access token in `expo-secure-store` (key `auth.accessToken`). The only thing that survives a restart.
+- **Three tiers for the session — know which holds what:**
+  | tier | where | lifetime | holds | read by |
+  |---|---|---|---|---|
+  | persistent | `tokenStorage` (SecureStore) | across restarts | access token | `AuthProvider.bootstrap()` only |
+  | reactive store | `AuthProvider` context | app session | `status`, `user`, `error` | UI via `useAuth()`, `RootNavigator` |
+  | sync holder | `authToken` module var | app session | token string | `httpClient` per request |
+  The store is reactive but not readable outside React; SecureStore is persistent but async — hence the in-memory mirror. The raw token is **not** in the context value.
+- **Flow:** cold start → `status:'loading'` → read token from SecureStore → `authenticated`/`unauthenticated` (no network needed, so a stored session opens straight to tabs offline). `signIn`→ `authApi.login` → write token to SecureStore + `authToken` → `authenticated`. `signOut` → clear both → `unauthenticated`.
 
 ### Folder layout — where code goes
 
 ```
 src/
-├── app/                    # (empty) reserved for future navigator/route config moved out of App.tsx
-├── navigation/
-│   └── types.ts            # RootTabParamList + a BottomTabScreenProps alias per route. Add new routes HERE first.
+├── app/                    # (empty) reserved for future navigator/route config
+├── navigation/             # composition root: RootNavigator (auth gate), MainTabs, types.ts
 ├── features/               # one folder per feature; a feature owns its screens + the code only it uses
 │   ├── home/    data/    settings/     # the 3 demo tabs, each: screens/<Name>Screen.tsx
+│   ├── auth/               # login/register UI only — screens/{Login,Register}Screen.tsx + navigation/AuthNavigator.tsx
+│   │                       #   (session logic lives in src/services/auth — see "Auth & data layer")
 │   └── fields/             # (empty) reference template for a real feature:
 │       ├── components/     #   UI used only by this feature
 │       ├── hooks/          #   hooks used only by this feature (e.g. useFields)
@@ -62,21 +88,22 @@ src/
 ├── components/             # shared "dumb" UI reused across features — Icon.tsx; add Button, Card, ...
 ├── hooks/                  # (empty) shared hooks — useDebounce, useKeyboardVisible, ...
 ├── utils/                  # (empty) pure functions, formatters, constants
-├── services/               # (empty) app-wide singletons — storage, notifications, analytics
+├── services/               # app-wide singletons — http/ (fetch client), auth/ (session)
 ├── theme/                  # Paper theme (theme.ts) + useAppTheme — the app's one palette (see "UI & theming")
 └── types/                  # (empty) global TS types
 ```
 
-New screen → `src/features/<feature>/screens/`, and register the route in `src/navigation/types.ts` + `App.tsx`. Component/hook used by one feature → that feature's folder; used by two or more → `src/components/` or `src/hooks/`.
+New screen → `src/features/<feature>/screens/`, and register the route in `src/navigation/types.ts` + the relevant navigator. Component/hook used by one feature → that feature's folder; used by two or more → `src/components/` or `src/hooks/`.
 
 ### Import rules
 
 - A feature **must not** import from another feature. Shared code moves up to `src/components`, `src/hooks`, `src/utils`, `src/services`, `src/theme`, or `src/types`.
 - Allowed direction: `features/*` → `components|hooks|utils|services` → (leaf, no `src/` imports). Never the reverse (shared code never imports a feature).
+- **`App.tsx` and `src/navigation/` are the composition root** — they may import from any feature (that's their job: wiring). Features still must not import each other.
 - `src/theme` and `src/types` are foundational — any layer may import them (e.g. `src/components/Icon.tsx` uses `useAppTheme`).
-- Screens read/write data only through their feature's `repository/` layer, never `AsyncStorage`/`fetch` directly — so the source can be swapped later.
+- Screens read/write data only through a `repository/` (feature) or `src/services/` layer, never `AsyncStorage`/`fetch`/`SecureStore` directly — so the source can be swapped later.
 - No path aliases configured; use relative imports (`../../components/Button`). `tsconfig.json` is `strict`.
 
 ### Project status
 
-This is a **contest-app boilerplate**, not a finished product. Despite the `agro-connect` repo name, the app is currently a generic 3-tab demo (counter, static data list, settings toggles) and `SPEC.md` still has open questions about the actual app idea. A prior commit added a full `src/map/` agricultural-field feature (map view, weather tile overlay, AsyncStorage field repository, mocked other-users' markers) that was **reverted** — check `git show 7a5c58a` if that direction is revived (its data-access layer maps onto `src/features/fields/repository/`). Read and update `SPEC.md` before building real features.
+This is a **contest-app boilerplate**, not a finished product. Despite the `agro-connect` repo name, the app is currently an auth gate (placeholder Login/Register) in front of a generic 3-tab demo (counter, static data list, settings toggles) and `SPEC.md` still has open questions about the actual app idea. A prior commit added a full `src/map/` agricultural-field feature (map view, weather tile overlay, AsyncStorage field repository, mocked other-users' markers) that was **reverted** — check `git show 7a5c58a` if that direction is revived (its data-access layer maps onto `src/features/fields/repository/`). Read and update `SPEC.md` before building real features.
