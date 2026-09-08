@@ -1,5 +1,8 @@
-import { StatusBar } from 'expo-status-bar';
+import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { MD3Theme } from 'react-native-paper';
+
+import { useAppTheme } from '../../../theme';
 
 interface DataItem {
   id: number;
@@ -48,10 +51,11 @@ const testData: DataItem[] = [
 ];
 
 export default function DataScreen() {
+  const theme = useAppTheme();
+  const styles = useMemo(() => makeStyles(theme), [theme]);
+
   return (
     <View style={styles.container}>
-      <StatusBar style="light" />
-
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.content}
@@ -84,71 +88,72 @@ export default function DataScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0B1020',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: 16,
-    paddingVertical: 24,
-  },
-  header: {
-    marginBottom: 24,
-  },
-  headerTitle: {
-    color: '#F8FAFC',
-    fontSize: 28,
-    fontWeight: '800',
-    marginBottom: 8,
-  },
-  headerSubtitle: {
-    color: '#94A3B8',
-    fontSize: 15,
-  },
-  card: {
-    backgroundColor: '#111827',
-    borderColor: '#1E293B',
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 12,
-    padding: 16,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  cardTitle: {
-    color: '#F8FAFC',
-    fontSize: 16,
-    fontWeight: '700',
-    flex: 1,
-  },
-  cardValue: {
-    color: '#2563EB',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  cardDescription: {
-    color: '#94A3B8',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  footer: {
-    marginTop: 24,
-    paddingVertical: 16,
-    borderTopColor: '#1E293B',
-    borderTopWidth: 1,
-  },
-  footerText: {
-    color: '#64748B',
-    fontSize: 14,
-    textAlign: 'center',
-  },
-});
+const makeStyles = (theme: MD3Theme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    scrollView: {
+      flex: 1,
+    },
+    content: {
+      paddingHorizontal: 16,
+      paddingVertical: 24,
+    },
+    header: {
+      marginBottom: 24,
+    },
+    headerTitle: {
+      color: theme.colors.onBackground,
+      fontSize: 28,
+      fontWeight: '800',
+      marginBottom: 8,
+    },
+    headerSubtitle: {
+      color: theme.colors.onSurfaceVariant,
+      fontSize: 15,
+    },
+    card: {
+      backgroundColor: theme.colors.surface,
+      borderColor: theme.colors.outline,
+      borderRadius: 16,
+      borderWidth: 1,
+      marginBottom: 12,
+      padding: 16,
+    },
+    cardHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    cardTitle: {
+      color: theme.colors.onSurface,
+      fontSize: 16,
+      fontWeight: '700',
+      flex: 1,
+    },
+    cardValue: {
+      color: theme.colors.primary,
+      fontSize: 14,
+      fontWeight: '600',
+      marginLeft: 8,
+    },
+    cardDescription: {
+      color: theme.colors.onSurfaceVariant,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+    footer: {
+      marginTop: 24,
+      paddingVertical: 16,
+      borderTopColor: theme.colors.outline,
+      borderTopWidth: 1,
+    },
+    footerText: {
+      color: theme.colors.onSurfaceVariant,
+      fontSize: 14,
+      textAlign: 'center',
+    },
+  });
