@@ -1,20 +1,23 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 import { Icon, type IconName } from '../components/Icon';
-import DataScreen from '../features/data/screens/DataScreen';
+import CreateScreen from '../features/create/screens/CreateScreen';
 import HomeScreen from '../features/home/screens/HomeScreen';
-import SettingsScreen from '../features/settings/screens/SettingsScreen';
+import MapScreen from '../features/map/screens/MapScreen';
+import PlaceholderScreen from '../features/placeholder/screens/PlaceholderScreen';
+import ProfileScreen from '../features/profile/screens/ProfileScreen';
+import { CreateTabButton } from './CreateTabButton';
 import type { RootTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
 
-const TAB_ICONS: Record<
-  keyof RootTabParamList,
-  { active: IconName; inactive: IconName }
+const TAB_ICONS: Partial<
+  Record<keyof RootTabParamList, { active: IconName; inactive: IconName }>
 > = {
   Home: { active: 'home', inactive: 'home-outline' },
-  Data: { active: 'chart-box', inactive: 'chart-box-outline' },
-  Settings: { active: 'cog', inactive: 'cog-outline' },
+  Map: { active: 'map', inactive: 'map-outline' },
+  Placeholder: { active: 'help-circle', inactive: 'help-circle-outline' },
+  Profile: { active: 'account', inactive: 'account-outline' },
 };
 
 export function MainTabs() {
@@ -23,6 +26,7 @@ export function MainTabs() {
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => {
           const set = TAB_ICONS[route.name];
+          if (!set) return null;
           return (
             <Icon
               name={focused ? set.active : set.inactive}
@@ -39,14 +43,28 @@ export function MainTabs() {
         options={{ title: 'Главная', headerShown: false }}
       />
       <Tab.Screen
-        name="Data"
-        component={DataScreen}
-        options={{ title: 'Данные', headerShown: true }}
+        name="Map"
+        component={MapScreen}
+        options={{ title: 'Карта', headerShown: true }}
       />
       <Tab.Screen
-        name="Settings"
-        component={SettingsScreen}
-        options={{ title: 'Параметры', headerShown: true }}
+        name="Create"
+        component={CreateScreen}
+        options={{
+          title: 'Создать',
+          headerShown: true,
+          tabBarButton: (props) => <CreateTabButton {...props} />,
+        }}
+      />
+      <Tab.Screen
+        name="Placeholder"
+        component={PlaceholderScreen}
+        options={{ title: '?', headerShown: true }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{ title: 'Профиль', headerShown: true }}
       />
     </Tab.Navigator>
   );

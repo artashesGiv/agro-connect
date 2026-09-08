@@ -24,7 +24,7 @@ Single-package Expo app, no backend. Entry: `index.ts` → `App.tsx`.
 - **`App.tsx`** is tiny: provider tree only — `SafeAreaProvider` → `PaperProvider theme={appTheme}` → `AuthProvider` → `RootNavigator`. All navigator wiring lives in `src/navigation/`.
 - **`src/navigation/`** — the composition root for navigation:
   - `RootNavigator.tsx` — the auth gate. `status === 'loading'` → blank background view (native splash still up); else `<NavigationContainer theme={navigationTheme}>` + `<StatusBar style="light">` wrapping either `<MainTabs>` (authenticated) or `<AuthNavigator>` (not). Whole navigator is swapped, never `navigate()`.
-  - `MainTabs.tsx` — the bottom-tab navigator (`Home`/`Data`/`Settings`) + `TAB_ICONS`. Colors come from `navigationTheme` automatically.
+  - `MainTabs.tsx` — the 5-tab bottom navigator: `Home`, `Map`, `Create`, `Placeholder` (`?`, temporary), `Profile`. Icons for all but `Create` come from `TAB_ICONS`; `Create` uses a custom `tabBarButton` (`CreateTabButton.tsx` — a big round `+`). Colors come from `navigationTheme` automatically. Every tab except `Home` is a placeholder for now.
   - `types.ts` — `RootTabParamList` + `AuthStackParamList` and per-screen prop aliases. Add new routes HERE first.
 - **`app.config.js`** — dynamic Expo config (replaces the old `app.json`). Portrait-locked, `userInterfaceStyle: 'dark'`, `plugins: ['expo-secure-store']`, Android package `com.a1.contestapp` (placeholder — replace before final submission), EAS `projectId` in `extra.eas`.
 - **`eas.json`** — `preview` (internal-distribution APK) and `production` (app-bundle) profiles only.
@@ -60,7 +60,7 @@ Single-package Expo app, no backend. Entry: `index.ts` → `App.tsx`.
 
 ### Auth & data layer
 
-On launch the app shows `AuthNavigator` until there's a session, then `MainTabs`. Login is a real form (email + password); Register is a 4-step wizard (email → confirmation code → name/surname/nickname → password ×2). The confirmation code is UI-only — `authApi.requestCode` / `verifyCode` are fire-and-forget stubs that accept anything. The last step maps the form to `RegisterPayload` and calls `signUp`. The backend plumbing is real but stubbed — see below.
+On launch the app shows `AuthNavigator` until there's a session, then `MainTabs`. Login is a real form (email + password); Register is a 4-step wizard (email → confirmation code → name/surname/nickname → password ×2). The confirmation code is UI-only — `authApi.requestCode` / `verifyCode` are fire-and-forget stubs that accept anything. The last step maps the form to `RegisterPayload` and calls `signUp`. **Logout** lives on the Profile tab (`src/features/profile/screens/ProfileScreen.tsx`) — a `signOut()` button. The backend plumbing is real but stubbed — see below.
 
 - **`src/services/http/`** — the network layer.
   - `config.ts` — `API_BASE_URL` = `process.env.EXPO_PUBLIC_API_URL` ?? JSONPlaceholder (`.env.example` documents it; `.env` is gitignored).
@@ -86,11 +86,12 @@ src/
 ├── app/                    # (empty) reserved for future navigator/route config
 ├── navigation/             # composition root: RootNavigator (auth gate), MainTabs, types.ts
 ├── features/               # one folder per feature; a feature owns its screens + the code only it uses
-│   ├── home/    data/    settings/     # the 3 demo tabs, each: screens/<Name>Screen.tsx
+│   ├── home/               # the one real tab (demo counter); screens/<Name>Screen.tsx
+│   ├── create/  placeholder/  profile/   # tab placeholders (profile also holds the logout button)
 │   ├── auth/               # auth UI: screens/ (+ screens/register/ wizard), navigation/ (Auth + nested Register),
 │   │                       #   schemas/ (zod), forms/RegisterFormProvider.tsx, components/ (FormTextInput, RegisterStepLayout)
 │   │                       #   (session logic lives in src/services/auth — see "Auth & data layer")
-│   └── fields/             # (empty) reference template for a real feature:
+│   └── map/                # the "Карта" tab (placeholder screen) + reference feature template:
 │       ├── components/     #   UI used only by this feature
 │       ├── hooks/          #   hooks used only by this feature (e.g. useFields)
 │       ├── repository/     #   data access for this feature — hides the source (AsyncStorage / API) behind an interface
@@ -116,4 +117,4 @@ New screen → `src/features/<feature>/screens/`, and register the route in `src
 
 ### Project status
 
-This is a **contest-app boilerplate**, not a finished product. Despite the `agro-connect` repo name, the app is currently an auth gate (placeholder Login/Register) in front of a generic 3-tab demo (counter, static data list, settings toggles) and `SPEC.md` still has open questions about the actual app idea. A prior commit added a full `src/map/` agricultural-field feature (map view, weather tile overlay, AsyncStorage field repository, mocked other-users' markers) that was **reverted** — check `git show 7a5c58a` if that direction is revived (its data-access layer maps onto `src/features/fields/repository/`). Read and update `SPEC.md` before building real features.
+This is a **contest-app boilerplate**, not a finished product. Despite the `agro-connect` repo name, the app is an auth flow (real Login form + 4-step Register wizard) in front of a 5-tab shell where only Home (a demo counter) has content — Map / Create / `?` / Profile are placeholders. `SPEC.md` still has open questions about the actual app idea. A prior commit added a full `src/map/` agricultural-field feature (map view, weather tile overlay, AsyncStorage field repository, mocked other-users' markers) that was **reverted** — check `git show 7a5c58a` if that direction is revived (its data-access layer maps onto `src/features/map/repository/`). Read and update `SPEC.md` before building real features.

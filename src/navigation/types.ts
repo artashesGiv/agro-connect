@@ -3,13 +3,20 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 export type RootTabParamList = {
   Home: undefined;
-  Data: undefined;
-  Settings: undefined;
+  Map: undefined;
+  Create: undefined;
+  Placeholder: undefined;
+  Profile: undefined;
 };
 
 export type HomeScreenProps = BottomTabScreenProps<RootTabParamList, 'Home'>;
-export type DataScreenProps = BottomTabScreenProps<RootTabParamList, 'Data'>;
-export type SettingsScreenProps = BottomTabScreenProps<RootTabParamList, 'Settings'>;
+export type MapScreenProps = BottomTabScreenProps<RootTabParamList, 'Map'>;
+export type CreateScreenProps = BottomTabScreenProps<RootTabParamList, 'Create'>;
+export type PlaceholderScreenProps = BottomTabScreenProps<
+  RootTabParamList,
+  'Placeholder'
+>;
+export type ProfileScreenProps = BottomTabScreenProps<RootTabParamList, 'Profile'>;
 
 export type AuthStackParamList = {
   Login: undefined;
