@@ -99,7 +99,7 @@ src/
 ├── components/             # shared "dumb" UI reused across features — Icon.tsx; add Button, Card, ...
 ├── hooks/                  # (empty) shared hooks — useDebounce, useKeyboardVisible, ...
 ├── utils/                  # (empty) pure functions, formatters, constants
-├── services/               # app-wide singletons — http/ (fetch client), auth/ (session)
+├── services/               # app-wide singletons — http/ (fetch client), auth/ (session), posts/ (mock post fetch)
 ├── theme/                  # Paper theme (theme.ts) + useAppTheme — the app's one palette (see "UI & theming")
 └── types/                  # (empty) global TS types
 ```
