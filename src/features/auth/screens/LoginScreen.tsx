@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
-import { Keyboard, ScrollView, StyleSheet, Text } from 'react-native';
+import { Keyboard, StyleSheet, Text } from 'react-native';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button, HelperText, type MD3Theme } from 'react-native-paper';
 
+import { ScreenContainer } from '../../../components/ScreenContainer';
 import { useAuth } from '../../../services/auth';
 import { useAppTheme } from '../../../theme';
 import type { LoginScreenProps } from '../../../navigation/types';
@@ -32,11 +33,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
+    <ScreenContainer scroll keyboardAvoiding contentContainerStyle={styles.content}>
       <Text style={styles.title}>Вход</Text>
       <Text style={styles.subtitle}>Войдите, чтобы продолжить.</Text>
 
@@ -86,16 +83,12 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       >
         Создать аккаунт
       </Button>
-    </ScrollView>
+    </ScreenContainer>
   );
 }
 
 const makeStyles = (theme: MD3Theme) =>
   StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: theme.colors.background,
-    },
     content: {
       flexGrow: 1,
       justifyContent: 'center',

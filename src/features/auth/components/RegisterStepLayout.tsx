@@ -1,7 +1,8 @@
 import { useMemo, type ReactNode } from 'react';
-import { Keyboard, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, StyleSheet, Text, View } from 'react-native';
 import { Button, IconButton, type MD3Theme } from 'react-native-paper';
 
+import { ScreenContainer } from '../../../components/ScreenContainer';
 import { useAppTheme } from '../../../theme';
 
 const TOTAL_STEPS = 4;
@@ -35,11 +36,7 @@ export function RegisterStepLayout({
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
+    <ScreenContainer scroll keyboardAvoiding contentContainerStyle={styles.content}>
       <View style={styles.topBar}>
         <IconButton
           icon="arrow-left"
@@ -78,16 +75,12 @@ export function RegisterStepLayout({
           {nextLabel}
         </Button>
       </View>
-    </ScrollView>
+    </ScreenContainer>
   );
 }
 
 const makeStyles = (theme: MD3Theme) =>
   StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: theme.colors.background,
-    },
     content: {
       flexGrow: 1,
       paddingBottom: 24,
@@ -96,7 +89,7 @@ const makeStyles = (theme: MD3Theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       paddingRight: 16,
-      paddingTop: 8,
+      paddingTop: 4,
     },
     backButton: {
       margin: 0,
