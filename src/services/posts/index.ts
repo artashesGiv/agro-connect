@@ -1,3 +1,7 @@
-export * as postsApi from './postsApi';
-export { MOCK_USER_POSTS } from './mockPosts';
-export type { Post, PostAuthor } from './postTypes';
+export {
+  getFeed,
+  getPost,
+  createPost,
+  deletePost,
+} from './postsRepository';
+export type { FeedPost, FeedFilter, NewPost } from './postsRepository';

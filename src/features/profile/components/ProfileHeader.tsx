@@ -1,15 +1,15 @@
 import { Appbar } from 'react-native-paper';
 
-import { useAuth } from '../../../services/auth';
+import { useAuth } from '@/services/auth';
 
 /**
  * Шапка вкладки «Профиль» вместо навигационного хедера:
- * колокольчик (уведомления) — @никнейм по центру — шестерёнка (настройки).
+ * колокольчик (уведомления) — @имя по центру — шестерёнка (настройки).
  * Верхнюю safe-area врезку `Appbar.Header` добавляет сам.
  */
 export function ProfileHeader() {
-  const { user, signOut } = useAuth();
-  const handle = user?.nickname ?? user?.name ?? 'аккаунт';
+  const { profile, signOut } = useAuth();
+  const handle = profile?.name ?? 'аккаунт';
 
   return (
     <Appbar.Header mode="center-aligned">

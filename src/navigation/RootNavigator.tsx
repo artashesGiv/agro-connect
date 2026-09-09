@@ -3,14 +3,18 @@ import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 
 import { AuthNavigator } from '../features/auth';
-import { useAuth } from '../services/auth';
-import { appTheme, navigationTheme } from '../theme';
+import { useAuth } from '@/services/auth';
+import { appTheme, navigationTheme } from '@/theme';
 import { MainTabs } from './MainTabs';
 
 /**
- * Гейт авторизации. Пока `status === 'loading'` — читаем токен из хранилища,
- * держим пустой экран цвета фона. Дальше показываем либо стек логина/регистрации,
- * либо основные табы. Навигатор переключается целиком — без `navigate`.
+ * Гейт авторизации. Пока `status === 'loading'` — восстанавливаем сессию
+ * Supabase, держим пустой экран цвета фона. Дальше показываем либо стек
+ * логина/регистрации, либо основные табы. Навигатор переключается целиком —
+ * без `navigate`.
+ *
+ * `registering` — это середина мастера: сессия после ввода кода уже есть,
+ * но профиль и пароль не заданы, поэтому в табы не пускаем.
  */
 export function RootNavigator() {
   const { status } = useAuth();

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { Avatar, Text, type MD3Theme } from 'react-native-paper';
 
-import { useAppTheme } from '../theme';
+import { useAppTheme } from '@/theme';
 import { Icon, type IconName } from './Icon';
 
 /** Автор поста — ровно то, что нужно карточке (совместимо с `PostAuthor` из сервиса). */

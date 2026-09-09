@@ -2,8 +2,8 @@ import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import type { MD3Theme } from 'react-native-paper';
 
-import { Icon, type IconName } from '../../../components/Icon';
-import { useAppTheme } from '../../../theme';
+import { Icon, type IconName } from '@/components/Icon';
+import { useAppTheme } from '@/theme';
 
 export type ProfileSection = 'posts' | 'bookmarks';
 

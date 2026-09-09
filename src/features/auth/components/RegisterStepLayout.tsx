@@ -2,13 +2,13 @@ import { useMemo, type ReactNode } from 'react';
 import { Keyboard, StyleSheet, Text, View } from 'react-native';
 import { Button, IconButton, type MD3Theme } from 'react-native-paper';
 
-import { ScreenContainer } from '../../../components/ScreenContainer';
-import { useAppTheme } from '../../../theme';
+import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
+import { useAppTheme } from '@/theme';
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 3;
 
 type RegisterStepLayoutProps = {
-  /** Номер шага, 1..4 — для прогресс-бара. */
+  /** Номер шага, 1..3 — для прогресс-бара. */
   step: number;
   title: string;
   subtitle?: string;
@@ -36,7 +36,7 @@ export function RegisterStepLayout({
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
   return (
-    <ScreenContainer scroll keyboardAvoiding contentContainerStyle={styles.content}>
+    <KeyboardAwareScreen contentContainerStyle={styles.content}>
       <View style={styles.topBar}>
         <IconButton
           icon="arrow-left"
@@ -75,7 +75,7 @@ export function RegisterStepLayout({
           {nextLabel}
         </Button>
       </View>
-    </ScreenContainer>
+    </KeyboardAwareScreen>
   );
 }
 
@@ -89,7 +89,7 @@ const makeStyles = (theme: MD3Theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       paddingRight: 16,
-      paddingTop: 4,
+      paddingTop: 8,
     },
     backButton: {
       margin: 0,

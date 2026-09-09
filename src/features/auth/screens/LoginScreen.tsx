@@ -4,10 +4,11 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button, HelperText, type MD3Theme } from 'react-native-paper';
 
-import { ScreenContainer } from '../../../components/ScreenContainer';
-import { useAuth } from '../../../services/auth';
-import { useAppTheme } from '../../../theme';
-import type { LoginScreenProps } from '../../../navigation/types';
+import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
+import type { LoginScreenProps } from '@/navigation/types';
+import { useAuth } from '@/services/auth';
+import { useAppTheme } from '@/theme';
+
 import { FormTextInput } from '../components/FormTextInput';
 import {
   loginDefaults,
@@ -33,7 +34,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   };
 
   return (
-    <ScreenContainer scroll keyboardAvoiding contentContainerStyle={styles.content}>
+    <KeyboardAwareScreen contentContainerStyle={styles.content}>
       <Text style={styles.title}>Вход</Text>
       <Text style={styles.subtitle}>Войдите, чтобы продолжить.</Text>
 
@@ -83,7 +84,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       >
         Создать аккаунт
       </Button>
-    </ScreenContainer>
+    </KeyboardAwareScreen>
   );
 }
 

@@ -1,33 +1,73 @@
 import { useEffect, useState } from 'react';
 
-import { postsApi, type Post } from '../../../services/posts';
+import { getFeed } from '@/services/posts';
+import { storage, toUserMessage } from '@/services/supabase';
+
+/** Пост в том виде, в каком его рисует `PostCard` на экране профиля. */
+export type ProfilePost = {
+  id: string;
+  author: { nickname: string; avatarUrl?: string };
+  title: string;
+  description?: string;
+  images: string[];
+};
 
 /**
- * Загружает посты пользователя при заходе на профиль. Пока `postsApi` делает
- * фейковый запрос и отдаёт моки. Ошибки логируются, список остаётся пустым.
+ * Посты автора для вкладки «Мои посты» (и позже — чужого профиля). Тянет ленту
+ * с фильтром по `author_id` и подписывает URL для приватного бакета `post-media`.
  */
 export function useUserPosts(userId?: string) {
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!userId) {
+      setPosts([]);
+      setLoading(false);
+      return;
+    }
+
     let active = true;
     setLoading(true);
-    postsApi
-      .fetchUserPosts(userId)
-      .then((data) => {
-        if (active) setPosts(data);
-      })
-      .catch((error) => {
-        if (active) console.error('Не удалось загрузить посты:', error);
-      })
-      .finally(() => {
+    setError(null);
+
+    (async () => {
+      try {
+        const feed = await getFeed({ authorId: userId, limit: 30 });
+        const paths = feed.flatMap((post) =>
+          post.post_media.map((media) => media.storage_path),
+        );
+        const urls = await storage.getPostMediaUrls(paths);
+
+        const mapped: ProfilePost[] = feed.map((post) => ({
+          id: post.id,
+          author: {
+            nickname: post.profiles?.name ?? 'без имени',
+            avatarUrl: post.profiles?.avatar_path
+              ? storage.getAvatarUrl(post.profiles.avatar_path)
+              : undefined,
+          },
+          title: post.title ?? 'Без заголовка',
+          description: post.body ?? undefined,
+          images: [...post.post_media]
+            .sort((a, b) => a.sort_order - b.sort_order)
+            .map((media) => urls[media.storage_path])
+            .filter((url): url is string => Boolean(url)),
+        }));
+
+        if (active) setPosts(mapped);
+      } catch (cause) {
+        if (active) setError(toUserMessage(cause));
+      } finally {
         if (active) setLoading(false);
-      });
+      }
+    })();
+
     return () => {
       active = false;
     };
   }, [userId]);
 
-  return { posts, loading };
+  return { posts, loading, error };
 }

@@ -2,16 +2,14 @@ import { useMemo, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Avatar, Text, type MD3Theme } from 'react-native-paper';
 
-import { useAppTheme } from '../theme';
+import { useAppTheme } from '@/theme';
 
-/** Данные профиля для отображения. Подмножество полей пользователя, но независимое
- *  от сессии — тем же компонентом показываем и свой профиль, и чужой. */
+/** Данные профиля для отображения — подмножество строки `profiles`, независимое
+ *  от сессии: тем же компонентом показываем и свой профиль, и чужой. */
 export type ProfileInfoData = {
-  firstName?: string;
-  lastName?: string;
+  name?: string;
   specialization?: string;
   region?: string;
-  phone?: string;
   avatarUrl?: string;
 };
 
@@ -21,7 +19,6 @@ export type ProfileInfoPlaceholders = {
   name?: string;
   specialization?: string;
   region?: string;
-  phone?: string;
 };
 
 type ProfileInfoProps = {
@@ -36,8 +33,6 @@ type ProfileInfoProps = {
 export function ProfileInfo({ profile, placeholders }: ProfileInfoProps) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
-
-  const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
 
   const line = (
     value: string | undefined,
@@ -68,10 +63,9 @@ export function ProfileInfo({ profile, placeholders }: ProfileInfoProps) {
         />
       )}
       <View style={styles.column}>
-        {line(fullName || undefined, placeholders?.name, true)}
+        {line(profile.name, placeholders?.name, true)}
         {line(profile.specialization, placeholders?.specialization)}
         {line(profile.region, placeholders?.region)}
-        {line(profile.phone, placeholders?.phone)}
       </View>
     </View>
   );

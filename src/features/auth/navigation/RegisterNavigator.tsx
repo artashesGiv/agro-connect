@@ -1,8 +1,7 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-import type { RegisterStackParamList } from '../../../navigation/types';
+import type { RegisterStackParamList } from '@/navigation/types';
 import RegisterEmailScreen from '../screens/register/RegisterEmailScreen';
-import RegisterCodeScreen from '../screens/register/RegisterCodeScreen';
 import RegisterProfileScreen from '../screens/register/RegisterProfileScreen';
 import RegisterPasswordScreen from '../screens/register/RegisterPasswordScreen';
 
@@ -18,7 +17,6 @@ export function RegisterNavigator() {
       screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
     >
       <Stack.Screen name="RegisterEmail" component={RegisterEmailScreen} />
-      <Stack.Screen name="RegisterCode" component={RegisterCodeScreen} />
       <Stack.Screen name="RegisterProfile" component={RegisterProfileScreen} />
       <Stack.Screen name="RegisterPassword" component={RegisterPasswordScreen} />
     </Stack.Navigator>

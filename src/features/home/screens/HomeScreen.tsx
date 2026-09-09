@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { MD3Theme } from 'react-native-paper';
 
-import { ScreenContainer } from '../../../components/ScreenContainer';
-import { useAppTheme } from '../../../theme';
+import { Screen } from '@/components/Screen';
+import { useAppTheme } from '@/theme';
 
 export default function HomeScreen() {
   const theme = useAppTheme();
@@ -11,7 +11,7 @@ export default function HomeScreen() {
   const [count, setCount] = useState(0);
 
   return (
-    <ScreenContainer edges={['top']} contentContainerStyle={styles.container}>
+    <Screen style={styles.container}>
       <View style={styles.badge}>
         <Text style={styles.badgeText}>EXPO · TYPESCRIPT · ANDROID</Text>
       </View>
@@ -35,7 +35,7 @@ export default function HomeScreen() {
           <Text style={styles.buttonText}>Нажать</Text>
         </Pressable>
       </View>
-    </ScreenContainer>
+    </Screen>
   );
 }
 

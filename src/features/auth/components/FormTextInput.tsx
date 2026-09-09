@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Controller,
   type Control,
@@ -7,6 +7,8 @@ import {
 } from 'react-hook-form';
 import { StyleSheet, View } from 'react-native';
 import { HelperText, TextInput, type TextInputProps } from 'react-native-paper';
+
+import { useFieldFocus } from '@/components/KeyboardAwareScreen';
 
 type FormTextInputProps<T extends FieldValues> = {
   control: Control<T>;
@@ -21,28 +23,38 @@ type FormTextInputProps<T extends FieldValues> = {
  * Мост react-hook-form ↔ Paper `TextInput`. Ошибка поля (из zod-схемы)
  * показывается под инпутом. Если задан `secureTextEntry` — добавляет глазок
  * показать/скрыть. Паттерн для всех форм проекта.
+ *
+ * При фокусе сообщает о себе `KeyboardAwareScreen`, чтобы тот вывел поле
+ * в центр видимой области над клавиатурой.
  */
 export function FormTextInput<T extends FieldValues>({
   control,
   name,
   label,
   secureTextEntry,
+  onFocus,
   ...inputProps
 }: FormTextInputProps<T>) {
   const [hidden, setHidden] = useState(Boolean(secureTextEntry));
+  const wrapperRef = useRef<View>(null);
+  const notifyFocus = useFieldFocus();
 
   return (
     <Controller
       control={control}
       name={name}
       render={({ field: { value, onChange, onBlur }, fieldState: { error } }) => (
-        <View style={styles.field}>
+        <View ref={wrapperRef} style={styles.field}>
           <TextInput
             mode="outlined"
             label={label}
             value={value ?? ''}
             onChangeText={onChange}
             onBlur={onBlur}
+            onFocus={(event) => {
+              notifyFocus(wrapperRef.current);
+              onFocus?.(event);
+            }}
             error={Boolean(error)}
             secureTextEntry={secureTextEntry ? hidden : undefined}
             right={
