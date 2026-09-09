@@ -5,7 +5,7 @@ import { HelperText } from 'react-native-paper';
 import type { RegisterPasswordScreenProps } from '@/navigation/types';
 import { useAuth } from '@/services/auth';
 
-import { FormTextInput } from '../../components/FormTextInput';
+import { FormTextInput } from '@/components/FormTextInput';
 import { RegisterStepLayout } from '../../components/RegisterStepLayout';
 import type { RegisterFormValues } from '../../schemas/registerSchema';
 

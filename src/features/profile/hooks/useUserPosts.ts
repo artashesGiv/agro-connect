@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { getFeed } from '@/services/posts';
 import { storage, toUserMessage } from '@/services/supabase';
@@ -15,59 +15,55 @@ export type ProfilePost = {
 /**
  * Посты автора для вкладки «Мои посты» (и позже — чужого профиля). Тянет ленту
  * с фильтром по `author_id` и подписывает URL для приватного бакета `post-media`.
+ * `reload` зовётся из экрана при фокусе — чтобы свежесозданный пост появился.
  */
 export function useUserPosts(userId?: string) {
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!userId) {
       setPosts([]);
       setLoading(false);
       return;
     }
-
-    let active = true;
     setLoading(true);
     setError(null);
+    try {
+      const feed = await getFeed({ authorId: userId, limit: 30 });
+      const paths = feed.flatMap((post) =>
+        post.post_media.map((media) => media.storage_path),
+      );
+      const urls = await storage.getPostMediaUrls(paths);
 
-    (async () => {
-      try {
-        const feed = await getFeed({ authorId: userId, limit: 30 });
-        const paths = feed.flatMap((post) =>
-          post.post_media.map((media) => media.storage_path),
-        );
-        const urls = await storage.getPostMediaUrls(paths);
+      const mapped: ProfilePost[] = feed.map((post) => ({
+        id: post.id,
+        author: {
+          nickname: post.profiles?.name ?? 'без имени',
+          avatarUrl: post.profiles?.avatar_path
+            ? storage.getAvatarUrl(post.profiles.avatar_path)
+            : undefined,
+        },
+        title: post.title ?? 'Без заголовка',
+        description: post.body ?? undefined,
+        images: [...post.post_media]
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((media) => urls[media.storage_path])
+          .filter((url): url is string => Boolean(url)),
+      }));
 
-        const mapped: ProfilePost[] = feed.map((post) => ({
-          id: post.id,
-          author: {
-            nickname: post.profiles?.name ?? 'без имени',
-            avatarUrl: post.profiles?.avatar_path
-              ? storage.getAvatarUrl(post.profiles.avatar_path)
-              : undefined,
-          },
-          title: post.title ?? 'Без заголовка',
-          description: post.body ?? undefined,
-          images: [...post.post_media]
-            .sort((a, b) => a.sort_order - b.sort_order)
-            .map((media) => urls[media.storage_path])
-            .filter((url): url is string => Boolean(url)),
-        }));
-
-        if (active) setPosts(mapped);
-      } catch (cause) {
-        if (active) setError(toUserMessage(cause));
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
+      setPosts(mapped);
+    } catch (cause) {
+      setError(toUserMessage(cause));
+    } finally {
+      setLoading(false);
+    }
   }, [userId]);
 
-  return { posts, loading, error };
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return { posts, loading, error, reload: load };
 }

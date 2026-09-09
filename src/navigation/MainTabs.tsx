@@ -52,7 +52,7 @@ export function MainTabs() {
         component={CreateScreen}
         options={{
           title: 'Создать',
-          headerShown: true,
+          headerShown: false,
           tabBarButton: (props) => <CreateTabButton {...props} />,
         }}
       />

@@ -4,12 +4,11 @@ import { useAuth } from '@/services/auth';
 
 /**
  * Шапка вкладки «Профиль» вместо навигационного хедера:
- * колокольчик (уведомления) — @имя по центру — шестерёнка (настройки).
+ * колокольчик (уведомления) слева — шестерёнка (настройки) справа.
  * Верхнюю safe-area врезку `Appbar.Header` добавляет сам.
  */
 export function ProfileHeader() {
-  const { profile, signOut } = useAuth();
-  const handle = profile?.name ?? 'аккаунт';
+  const { signOut } = useAuth();
 
   return (
     <Appbar.Header mode="center-aligned">
@@ -18,7 +17,7 @@ export function ProfileHeader() {
         onPress={() => {}}
         accessibilityLabel="Уведомления"
       />
-      <Appbar.Content title={`@${handle}`} />
+      <Appbar.Content title="" />
       {/* TODO: заменить на переход в экран настроек; выход — временно здесь. */}
       <Appbar.Action
         icon="cog-outline"

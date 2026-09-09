@@ -1,0 +1,49 @@
+import { useFormContext, useWatch } from 'react-hook-form';
+import { StyleSheet, View } from 'react-native';
+import { Text } from 'react-native-paper';
+
+import { FormTextInput } from '@/components/FormTextInput';
+import type { CreateTitleScreenProps } from '@/navigation/types';
+
+import { CreateStepLayout } from '../../components/CreateStepLayout';
+import { PostTypeToggle } from '../../components/PostTypeToggle';
+import {
+  CREATE_STEP_FIELDS,
+  type CreatePostFormValues,
+} from '../../schemas/createPostSchema';
+
+export default function CreateTitleScreen({ navigation }: CreateTitleScreenProps) {
+  const { control, trigger, setValue } = useFormContext<CreatePostFormValues>();
+  const postTypeCode = useWatch({ control, name: 'postTypeCode' });
+
+  const handleNext = async () => {
+    if (!(await trigger(CREATE_STEP_FIELDS.title))) return;
+    navigation.navigate('CreateBody');
+  };
+
+  return (
+    <CreateStepLayout step={1} title="Заголовок или вопрос" onNext={handleNext}>
+      <View style={styles.toggle}>
+        <Text variant="labelLarge" style={styles.label}>
+          Выберите тип
+        </Text>
+        <PostTypeToggle
+          value={postTypeCode}
+          onChange={(value) =>
+            setValue('postTypeCode', value, { shouldDirty: true })
+          }
+        />
+      </View>
+      <FormTextInput control={control} name="title" label="Заголовок или вопрос" />
+    </CreateStepLayout>
+  );
+}
+
+const styles = StyleSheet.create({
+  toggle: {
+    marginBottom: 16,
+  },
+  label: {
+    marginBottom: 8,
+  },
+});

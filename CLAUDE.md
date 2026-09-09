@@ -27,7 +27,7 @@ Single-package Expo app. The backend is **Supabase** (hosted Postgres + Auth + S
   - `RootNavigator.tsx` — the auth gate. `status === 'loading'` → blank background view (native splash still up); else `<NavigationContainer theme={navigationTheme}>` + `<StatusBar style="light">` wrapping either `<MainTabs>` (`authenticated`) or `<AuthNavigator>` (everything else, **including `registering`** — during sign-up a session exists before the profile is written, and the user must not reach the tabs yet). Whole navigator is swapped, never `navigate()`.
   - `MainTabs.tsx` — the 5-tab bottom navigator: `Home`, `Map`, `Create`, `Placeholder` (`?`, temporary), `Profile`. Icons for all but `Create` come from `TAB_ICONS`; `Create` uses a custom `tabBarButton` (`CreateTabButton.tsx` — a big round `+`). Colors come from `navigationTheme` automatically. `Home` and `Profile` have real content; `Profile` runs `headerShown: false` and draws its own `Appbar.Header` (`ProfileHeader`). Map / Create / `?` are placeholders.
   - `types.ts` — `RootTabParamList` + `AuthStackParamList` and per-screen prop aliases. Add new routes HERE first.
-- **`app.config.js`** — dynamic Expo config (replaces the old `app.json`). Portrait-locked, `userInterfaceStyle: 'dark'`, no config plugins, Android package `com.a1.contestapp` (placeholder — replace before final submission), EAS `projectId` in `extra.eas`.
+- **`app.config.js`** — dynamic Expo config (replaces the old `app.json`). Portrait-locked, `userInterfaceStyle: 'light'`, `plugins: ['expo-image-picker']` (camera + photo-library permission strings), Android package `com.a1.contestapp` (placeholder — replace before final submission), EAS `projectId` in `extra.eas`.
 - **`eas.json`** — `preview` (internal-distribution APK) and `production` (app-bundle) profiles only.
 - **`tsconfig.json`** — `strict`, plus `paths: { "@/*": ["./src/*"] }`. No `baseUrl` (deprecated in TS 6) and no babel/metro config: Expo SDK 57 enables `experiments.tsconfigPaths` by default and resolves `paths` relative to the config's own directory.
 
@@ -35,7 +35,7 @@ Single-package Expo app. The backend is **Supabase** (hosted Postgres + Auth + S
 
 - **React Native Paper** (`react-native-paper`, MD3) is the component library. Icons come from `@expo/vector-icons` (`expo-font` is its required peer dep) — Paper auto-detects it, no icon config needed.
 - **`src/theme/theme.ts` is the single source for the palette.** Edit the `brand` object at the top (≈10 hexes: `primary`, `background`, `surface`, `text`, `border`, `danger`, …) and everything follows. It builds:
-  - `appTheme: MD3Theme` — `MD3LightTheme` with `colors` overridden from `brand` (mapped to MD3 roles). One fixed **light "wheat + coffee"** theme (warm cream surfaces `#F6EBD2` / `#EEDFBE`, brown primary `#6B4A2E`) — no light/dark switching. To go dark: base on `MD3DarkTheme` + `DarkTheme` (from `@react-navigation/native`) + dark `brand` values (a full "earth + wheat" dark palette is recorded in the `theme-palettes` memory).
+  - `appTheme: MD3Theme` — `MD3LightTheme` with `colors` overridden from `brand` (mapped to MD3 roles). One fixed **light "wheat + coffee"** theme (warm cream surfaces `#F6EBD2` / `#EEDFBE`, brown primary `#6B4A2E`) — no light/dark switching. It also neutralises the default-purple MD3 roles `brand` doesn't cover (`elevation.level1..5`, `secondary*`, `tertiary*`, `backdrop`, `inverseSurface`) — otherwise Paper `Menu` / `Dialog` / `SegmentedButtons` render on a lavender surface. To go dark: base on `MD3DarkTheme` + `DarkTheme` (from `@react-navigation/native`) + dark `brand` values (a full "earth + wheat" dark palette is recorded in the `theme-palettes` memory).
   - `navigationTheme` — React Navigation theme (`DefaultTheme` base) built from the same `appTheme.colors`.
 - `src/theme/useAppTheme.ts` — `useAppTheme()`, a typed `useTheme<MD3Theme>()` wrapper. `src/theme/index.ts` re-exports `appTheme`, `navigationTheme`, `useAppTheme`.
 - **Screens get colors only from `useAppTheme()`** — never hard-code hex. Pattern: `const styles = useMemo(() => makeStyles(theme), [theme])` where `makeStyles(theme: MD3Theme)` returns `StyleSheet.create({...})` referencing `theme.colors.*`. See any of the 3 screens.
@@ -52,7 +52,7 @@ Android draws the app **edge-to-edge** (RN 0.81+), so content runs under the sta
   - The viewport is re-measured on every focus rather than trusted from `onLayout`, because a screen can arrive via a stack transition.
   - A spacer at the end of the content grows while the keyboard is up; without it the last field hits the end of the content and can never reach the centre.
   - Hand-rolled on purpose: `KeyboardAvoidingView` only shrinks the container (field ends up flush against the keyboard), and `react-native-keyboard-controller` is a native module absent from Expo Go, which is how this app is debugged.
-- A new screen without a header **must** use one of these two wrappers. A new form field must go through `FormTextInput`, or it will not be centred.
+- A new screen without a header **must** use one of these two wrappers (or draw its own `Appbar.Header`, like the Profile tab). A new form field must go through `FormTextInput`, or it will not be centred.
 
 ### Icons
 
@@ -70,7 +70,7 @@ Android draws the app **edge-to-edge** (RN 0.81+), so content runs under the sta
 **react-hook-form + zod** (`@hookform/resolvers/zod`). `zod` is pinned to `^3.25.x` on purpose — Expo's tooling already pulls exactly that version transitively, so the pin dedupes to one copy (v3 API: `z.string().email()`).
 
 - **Schema per feature** in `src/features/<feature>/schemas/` — e.g. `loginSchema.ts` exports `loginSchema`, `type LoginFormValues = z.infer<typeof loginSchema>`, and `loginDefaults`. The schema is the single source for both validation and the values type.
-- **`src/features/auth/components/FormTextInput.tsx`** — the bridge: `Controller` (rhf) ↔ Paper `TextInput` + `HelperText`. Generic over the form type (`control` + `name` + `label` + passthrough `TextInputProps`); shows the field's zod error beneath it; renders an eye toggle when `secureTextEntry` is set. This is the pattern for every form — promote it to `src/components/` once a second feature has a form.
+- **`src/components/FormTextInput.tsx`** — the bridge: `Controller` (rhf) ↔ Paper `TextInput` + `HelperText`. Generic over the form type (`control` + `name` + `label` + passthrough `TextInputProps`, so `multiline` etc. pass through); shows the field's zod error beneath it; renders an eye toggle when `secureTextEntry` is set. Shared (auth + create wizards use it).
 - **Screen wiring:** `useForm<Values>({ resolver: zodResolver(schema), defaultValues, mode: 'onTouched' })`, submit via `handleSubmit(values => signIn(values))`. Field errors render under the fields; a server/auth error comes from `useAuth().error` shown above the form (it self-clears on the next submit).
 - **Multi-step form (Register):** one `useForm` for the whole wizard in `src/features/auth/forms/RegisterFormProvider.tsx` (RHF `FormProvider`); each step screen pulls it via `useFormContext<RegisterFormValues>()`. A step validates only its own fields with `await trigger(REGISTER_STEP_FIELDS.<step>)` before `navigation.navigate(...)`. `RegisterStepLayout` is the shared step shell (back + progress bar + title + footer button). The steps are screens of a nested native-stack (`RegisterNavigator`), so `navigation.goBack()` moves between steps and, on step 1, bubbles up to `Login`.
 - Only the last step touches the network (`useAuth().signUp`); steps 1-2 are pure local validation. The step-2 fields (`name`, `specialization`, `region`) mirror the `profiles` columns exactly — the schema has no first/last-name or nickname column, so do not reintroduce them in the form.
@@ -121,9 +121,12 @@ src/
 ├── features/               # one folder per feature; a feature owns its screens + the code only it uses
 │   ├── home/               # the one real tab (demo counter) + the feed hook (hooks/useFeed.ts);
 │   │                       #   the posts repository itself lives in src/services/posts (profile reuses it)
-│   ├── create/  placeholder/  profile/   # tab placeholders (profile also holds the logout button)
+│   ├── create/             # "+" tab — 5-step create-post wizard, same shape as the register wizard:
+│   │                       #   schemas/ (zod), forms/CreatePostProvider.tsx, navigation/CreateNavigator.tsx,
+│   │                       #   components/ (CreateStepLayout, PostTypeToggle, PhotoPicker), screens/create/*
+│   ├── placeholder/  profile/   # placeholder/ is a stub tab; profile is built out (see Project status)
 │   ├── auth/               # auth UI: screens/ (+ screens/register/ wizard), navigation/ (Auth + nested Register),
-│   │                       #   schemas/ (zod), forms/RegisterFormProvider.tsx, components/ (FormTextInput, RegisterStepLayout)
+│   │                       #   schemas/ (zod), forms/RegisterFormProvider.tsx, components/ (RegisterStepLayout)
 │   │                       #   (session logic lives in src/services/auth — see "Auth — the session")
 │   └── map/                # the "Карта" tab (placeholder screen) + reference feature template:
 │       ├── components/     #   UI used only by this feature

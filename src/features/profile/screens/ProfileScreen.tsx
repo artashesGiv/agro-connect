@@ -1,11 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { ActivityIndicator, Divider, Text, type MD3Theme } from 'react-native-paper';
 
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PostCard } from '@/components/PostCard';
 import { ProfileInfo } from '@/components/ProfileInfo';
 import { useAuth } from '@/services/auth';
-import { storage } from '@/services/supabase';
+import { deletePost } from '@/services/posts';
+import { storage, toUserMessage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
 
 import { ProfileHeader } from '../components/ProfileHeader';
@@ -36,7 +39,38 @@ export default function ProfileScreen() {
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const { user, profile } = useAuth();
   const [section, setSection] = useState<ProfileSection>('posts');
-  const { posts, loading, error } = useUserPosts(user?.id);
+  const { posts, loading, error, reload } = useUserPosts(user?.id);
+
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Возврат на вкладку (например, после публикации поста) — перечитываем.
+  useFocusEffect(
+    useCallback(() => {
+      void reload();
+    }, [reload]),
+  );
+
+  const closeDeleteDialog = useCallback(() => {
+    setPendingDeleteId(null);
+    setDeleteError(null);
+  }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pendingDeleteId) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deletePost(pendingDeleteId);
+      await reload();
+      setPendingDeleteId(null);
+    } catch (cause) {
+      setDeleteError(toUserMessage(cause));
+    } finally {
+      setDeleting(false);
+    }
+  }, [pendingDeleteId, reload]);
 
   const avatarUrl = profile?.avatar_path
     ? storage.getAvatarUrl(profile.avatar_path)
@@ -80,11 +114,31 @@ export default function ProfileScreen() {
                 title={post.title}
                 description={post.description}
                 images={post.images}
+                onEdit={() => {
+                  /* TODO: экран редактирования поста */
+                }}
+                onDelete={() => {
+                  setDeleteError(null);
+                  setPendingDeleteId(post.id);
+                }}
               />
             ))
           )}
         </View>
       </ScrollView>
+
+      <ConfirmDialog
+        visible={pendingDeleteId !== null}
+        icon="trash-can-outline"
+        title="Удалить пост?"
+        message="Это действие нельзя отменить."
+        confirmLabel="Удалить"
+        destructive
+        loading={deleting}
+        error={deleteError}
+        onConfirm={handleConfirmDelete}
+        onCancel={closeDeleteDialog}
+      />
     </View>
   );
 }

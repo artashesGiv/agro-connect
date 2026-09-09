@@ -2,7 +2,7 @@ import { useFormContext } from 'react-hook-form';
 
 import type { RegisterEmailScreenProps } from '@/navigation/types';
 
-import { FormTextInput } from '../../components/FormTextInput';
+import { FormTextInput } from '@/components/FormTextInput';
 import { RegisterStepLayout } from '../../components/RegisterStepLayout';
 import {
   REGISTER_STEP_FIELDS,

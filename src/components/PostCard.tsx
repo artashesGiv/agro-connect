@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
-import { Avatar, Text, type MD3Theme } from 'react-native-paper';
+import { Avatar, Menu, Text, type MD3Theme } from 'react-native-paper';
 
 import { useAppTheme } from '@/theme';
 import { Icon, type IconName } from './Icon';
@@ -65,6 +65,9 @@ type PostCardProps = {
   onComment?: () => void;
   onBookmark?: () => void;
   onMap?: () => void;
+  /** Если передан `onEdit` или `onDelete` — в углу поста появляются «три точки». */
+  onEdit?: () => void;
+  onDelete?: () => void;
 };
 
 /**
@@ -72,6 +75,8 @@ type PostCardProps = {
  * пост другого пользователя. Обязательны только `author` и `title`.
  * Пост на всю ширину, без рамки/фона, разделяется нижней полоской.
  * Фото пока одно (`images[0]`); слайдер для нескольких — на будущее.
+ * «Три точки» с меню «Редактировать / Удалить» показываем, когда родитель дал
+ * `onEdit`/`onDelete` (для своих постов).
  */
 export function PostCard({
   author,
@@ -83,25 +88,85 @@ export function PostCard({
   onComment,
   onBookmark,
   onMap,
+  onEdit,
+  onDelete,
 }: PostCardProps) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const [menuOpen, setMenuOpen] = useState(false);
   const cover = images?.[0];
+  const hasMenu = Boolean(onEdit || onDelete);
 
   return (
     <View style={styles.card}>
       <View style={styles.header}>
-        {author.avatarUrl ? (
-          <Avatar.Image size={36} source={{ uri: author.avatarUrl }} />
-        ) : (
-          <Avatar.Icon
-            size={36}
-            icon="account"
-            style={styles.avatar}
-            color={theme.colors.onSurfaceVariant}
-          />
-        )}
-        <Text style={styles.nickname}>@{author.nickname}</Text>
+        <View style={styles.headerMain}>
+          {author.avatarUrl ? (
+            <Avatar.Image size={36} source={{ uri: author.avatarUrl }} />
+          ) : (
+            <Avatar.Icon
+              size={36}
+              icon="account"
+              style={styles.avatar}
+              color={theme.colors.onSurfaceVariant}
+            />
+          )}
+          <Text style={styles.nickname}>{author.nickname}</Text>
+        </View>
+
+        {hasMenu ? (
+          <Menu
+            visible={menuOpen}
+            onDismiss={() => setMenuOpen(false)}
+            contentStyle={styles.menuContent}
+            anchor={
+              <Pressable
+                onPress={() => setMenuOpen(true)}
+                hitSlop={6}
+                style={actionStyles.action}
+                accessibilityRole="button"
+                accessibilityLabel="Действия с постом"
+              >
+                <Icon
+                  name="dots-vertical"
+                  size={20}
+                  color={theme.colors.onSurfaceVariant}
+                />
+              </Pressable>
+            }
+          >
+            <Menu.Item
+              leadingIcon={() => (
+                <Icon
+                  name="pencil-outline"
+                  size={20}
+                  color={theme.colors.onSurface}
+                />
+              )}
+              title="Редактировать"
+              titleStyle={styles.menuItemText}
+              onPress={() => {
+                setMenuOpen(false);
+                onEdit?.();
+              }}
+            />
+            <Menu.Item
+              leadingIcon={() => (
+                <Icon
+                  name="trash-can-outline"
+                  size={20}
+                  color={theme.colors.error}
+                />
+              )}
+              title="Удалить"
+              titleStyle={styles.menuItemDanger}
+              onPress={() => {
+                setMenuOpen(false);
+                onDelete?.();
+              }}
+            />
+          </Menu>
+        ) : null}
       </View>
 
       <View style={styles.body}>
@@ -146,8 +211,25 @@ const makeStyles = (theme: MD3Theme) =>
     header: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
+      justifyContent: 'space-between',
       paddingHorizontal: 16,
+    },
+    menuContent: {
+      borderRadius: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.colors.outline,
+    },
+    menuItemText: {
+      color: theme.colors.onSurface,
+    },
+    menuItemDanger: {
+      color: theme.colors.error,
+    },
+    headerMain: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
     },
     avatar: {
       backgroundColor: theme.colors.surfaceVariant,
