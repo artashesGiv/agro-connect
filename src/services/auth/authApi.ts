@@ -2,7 +2,9 @@ import { http } from '../http';
 import type { Credentials, RegisterPayload, Session } from './authTypes';
 
 // TODO(backend): когда появится реальный API — заменить пути и распарсить
-// настоящий ответ ({ token, user }) вместо заглушки ниже.
+// настоящий ответ ({ token, user }) вместо заглушки ниже. В маппинг user добавить
+// поля профиля (firstName/lastName/nickname/specialization/region/phone) —
+// сейчас они всегда пустые, заполнятся через будущий экран настроек.
 
 /**
  * Пока бьём в тестовый JSONPlaceholder только чтобы обкатать сетевой слой.

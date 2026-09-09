@@ -64,7 +64,7 @@ export function MainTabs() {
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ title: 'Профиль', headerShown: true }}
+        options={{ title: 'Профиль', headerShown: false }}
       />
     </Tab.Navigator>
   );

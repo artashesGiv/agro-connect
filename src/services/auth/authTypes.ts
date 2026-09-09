@@ -21,6 +21,14 @@ export type AuthUser = {
   id: string;
   email: string;
   name: string;
+  // Поля профиля. При регистрации не запрашиваются — заполняются позже через
+  // экран настроек. Пока всегда undefined → экран профиля показывает плейсхолдеры.
+  firstName?: string;
+  lastName?: string;
+  nickname?: string;
+  specialization?: string;
+  region?: string;
+  phone?: string;
 };
 
 /** Что возвращает сервер на вход/регистрацию (после маппинга под наш формат). */
