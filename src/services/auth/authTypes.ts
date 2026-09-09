@@ -1,6 +1,11 @@
+import type { User } from '@supabase/supabase-js';
+
+import type { Profile } from '@/services/profile';
+
 export type AuthStatus =
-  | 'loading' // читаем токен из хранилища при старте
-  | 'authenticating' // идёт вход/регистрация
+  | 'loading' // читаем сохранённую сессию при старте
+  | 'authenticating' // идёт вход
+  | 'registering' // идёт регистрация: сессия может уже быть, но профиль не заполнен
   | 'authenticated'
   | 'unauthenticated';
 
@@ -9,31 +14,25 @@ export type Credentials = {
   password: string;
 };
 
+/** Всё, что собирает мастер регистрации, одним объектом. */
 export type RegisterPayload = {
   email: string;
-  firstName: string;
-  lastName: string;
-  nickname: string;
   password: string;
-};
-
-export type AuthUser = {
-  id: string;
-  email: string;
   name: string;
-};
-
-/** Что возвращает сервер на вход/регистрацию (после маппинга под наш формат). */
-export type Session = {
-  token: string;
-  user: AuthUser;
+  specialization: string;
+  region: string;
 };
 
 export type AuthContextValue = {
   status: AuthStatus;
-  user: AuthUser | null;
+  /** Пользователь Supabase Auth: id, email. Профиль — отдельным полем. */
+  user: User | null;
+  /** Строка `profiles`. null, пока не загрузилась или пока её нет. */
+  profile: Profile | null;
   error: string | null;
   signIn: (credentials: Credentials) => Promise<void>;
-  signUp: (payload: RegisterPayload) => Promise<void>;
+  /** Последний шаг мастера: создаёт пользователя и заполняет профиль. */
+  signUp: (payload: RegisterPayload) => Promise<boolean>;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 };

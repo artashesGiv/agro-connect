@@ -1,42 +1,45 @@
-import { http } from '../http';
-import type { Credentials, RegisterPayload, Session } from './authTypes';
+import type { Session } from '@supabase/supabase-js';
 
-// TODO(backend): когда появится реальный API — заменить пути и распарсить
-// настоящий ответ ({ token, user }) вместо заглушки ниже.
+import { supabase } from '@/services/supabase';
+
+import type { Credentials } from './authTypes';
 
 /**
- * Пока бьём в тестовый JSONPlaceholder только чтобы обкатать сетевой слой.
- * Ответ не используем — возвращаем синтетическую сессию из введённых данных.
- * Реальная ошибка сети/сервера пробрасывается наверх (это и есть поведение,
- * к которому готовимся).
+ * Тонкие обёртки над supabase.auth. Состояние не трогают — им управляет
+ * AuthProvider через onAuthStateChange.
  */
-export async function login(credentials: Credentials): Promise<Session> {
-  await http.post('/users', credentials, { auth: false });
-  return stubSession(credentials.email);
+
+export async function signInWithPassword(credentials: Credentials): Promise<Session> {
+  const { data, error } = await supabase.auth.signInWithPassword(credentials);
+  if (error) throw error;
+  return data.session;
 }
 
-export async function register(payload: RegisterPayload): Promise<Session> {
-  await http.post('/users', payload, { auth: false });
-  return stubSession(payload.email, payload.nickname);
+/**
+ * Подтверждение почты на бэкенде отключено (`mailer_autoconfirm: true`),
+ * поэтому signUp сразу возвращает готовую сессию — писем и кодов нет.
+ */
+export async function signUpWithPassword(credentials: Credentials): Promise<Session> {
+  const { data, error } = await supabase.auth.signUp(credentials);
+  if (error) throw error;
+  if (!data.session) {
+    // Сюда попадём, если на бэкенде снова включат подтверждение почты:
+    // пользователь создан, но войти нельзя. Лучше явная ошибка, чем зависший экран.
+    throw new Error(
+      'Регистрация не завершена: сервер не вернул сессию. ' +
+        'Возможно, на бэкенде включили подтверждение почты.',
+    );
+  }
+  return data.session;
 }
 
-// Мок-верификация email. Код не проверяется — принимаем что угодно.
-// TODO(backend): реальный флоу — отдельные запросы start / verify / complete.
-export async function requestCode(email: string): Promise<void> {
-  await http.post('/posts', { email }, { auth: false }).catch(() => {});
+export async function signOut(): Promise<void> {
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
 }
 
-export async function verifyCode(email: string, code: string): Promise<void> {
-  await http.post('/posts', { email, code }, { auth: false }).catch(() => {});
-}
-
-function stubSession(email: string, name?: string): Session {
-  return {
-    token: 'demo-access-token',
-    user: {
-      id: 'demo-user',
-      email,
-      name: name ?? email.split('@')[0],
-    },
-  };
+export async function getSession(): Promise<Session | null> {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  return data.session;
 }

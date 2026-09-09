@@ -1,9 +1,10 @@
-import { StyleSheet } from 'react-native';
 import { useFormContext } from 'react-hook-form';
+import { StyleSheet } from 'react-native';
 import { HelperText } from 'react-native-paper';
 
-import { useAuth } from '../../../../services/auth';
-import type { RegisterPasswordScreenProps } from '../../../../navigation/types';
+import type { RegisterPasswordScreenProps } from '@/navigation/types';
+import { useAuth } from '@/services/auth';
+
 import { FormTextInput } from '../../components/FormTextInput';
 import { RegisterStepLayout } from '../../components/RegisterStepLayout';
 import type { RegisterFormValues } from '../../schemas/registerSchema';
@@ -11,30 +12,31 @@ import type { RegisterFormValues } from '../../schemas/registerSchema';
 export default function RegisterPasswordScreen({
   navigation,
 }: RegisterPasswordScreenProps) {
-  const { control, handleSubmit } = useFormContext<RegisterFormValues>();
-  const { status, error, signUp } = useAuth();
+  const { control, handleSubmit, formState } = useFormContext<RegisterFormValues>();
+  const { error, signUp } = useAuth();
 
-  const busy = status === 'authenticating';
-
+  // Единственный сетевой шаг мастера: создаём аккаунт и сразу пишем профиль.
+  // Успех переводит status в 'authenticated' — навигатор сам переключится
+  // на табы, отдельного navigate не нужно.
   const submit = handleSubmit((values) =>
     signUp({
       email: values.email,
-      firstName: values.firstName,
-      lastName: values.lastName,
-      nickname: values.nickname,
       password: values.password,
-    }),
+      name: values.name,
+      specialization: values.specialization,
+      region: values.region,
+    }).then(() => undefined),
   );
 
   return (
     <RegisterStepLayout
-      step={4}
+      step={3}
       title="Пароль"
       subtitle="Минимум 6 символов."
       onBack={navigation.goBack}
       onNext={submit}
       nextLabel="Зарегистрироваться"
-      nextLoading={busy}
+      nextLoading={formState.isSubmitting}
     >
       <FormTextInput
         control={control}

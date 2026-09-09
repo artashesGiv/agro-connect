@@ -1,7 +1,7 @@
 import { useFormContext } from 'react-hook-form';
 
-import { authApi } from '../../../../services/auth';
-import type { RegisterEmailScreenProps } from '../../../../navigation/types';
+import type { RegisterEmailScreenProps } from '@/navigation/types';
+
 import { FormTextInput } from '../../components/FormTextInput';
 import { RegisterStepLayout } from '../../components/RegisterStepLayout';
 import {
@@ -10,19 +10,20 @@ import {
 } from '../../schemas/registerSchema';
 
 export default function RegisterEmailScreen({ navigation }: RegisterEmailScreenProps) {
-  const { control, trigger, getValues } = useFormContext<RegisterFormValues>();
+  const { control, trigger } = useFormContext<RegisterFormValues>();
 
+  // Сеть здесь не трогаем: аккаунт создаётся одним запросом на последнем шаге.
+  // Поэтому «почта уже занята» всплывёт только там — раньше узнать неоткуда.
   const handleNext = async () => {
     if (!(await trigger(REGISTER_STEP_FIELDS.email))) return;
-    void authApi.requestCode(getValues('email'));
-    navigation.navigate('RegisterCode');
+    navigation.navigate('RegisterProfile');
   };
 
   return (
     <RegisterStepLayout
       step={1}
       title="Ваш email"
-      subtitle="На него придёт код подтверждения."
+      subtitle="По нему вы будете входить в приложение."
       onBack={navigation.goBack}
       onNext={handleNext}
     >

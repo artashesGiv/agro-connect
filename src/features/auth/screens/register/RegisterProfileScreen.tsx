@@ -1,6 +1,7 @@
 import { useFormContext } from 'react-hook-form';
 
-import type { RegisterProfileScreenProps } from '../../../../navigation/types';
+import type { RegisterProfileScreenProps } from '@/navigation/types';
+
 import { FormTextInput } from '../../components/FormTextInput';
 import { RegisterStepLayout } from '../../components/RegisterStepLayout';
 import {
@@ -18,9 +19,11 @@ export default function RegisterProfileScreen({
     navigation.navigate('RegisterPassword');
   };
 
+  // Поля повторяют колонки `profiles`. Справочников под специализацию и регион
+  // в схеме БД нет, поэтому пока свободный ввод.
   return (
     <RegisterStepLayout
-      step={3}
+      step={2}
       title="О себе"
       subtitle="Как вас показывать другим пользователям."
       onBack={navigation.goBack}
@@ -28,26 +31,22 @@ export default function RegisterProfileScreen({
     >
       <FormTextInput
         control={control}
-        name="firstName"
+        name="name"
         label="Имя"
-        autoComplete="given-name"
-        textContentType="givenName"
+        autoComplete="name"
+        textContentType="name"
       />
       <FormTextInput
         control={control}
-        name="lastName"
-        label="Фамилия"
-        autoComplete="family-name"
-        textContentType="familyName"
+        name="specialization"
+        label="Специализация"
+        placeholder="Например, растениеводство"
       />
       <FormTextInput
         control={control}
-        name="nickname"
-        label="Никнейм"
-        autoCapitalize="none"
-        autoComplete="username"
-        textContentType="nickname"
-        autoCorrect={false}
+        name="region"
+        label="Регион"
+        placeholder="Например, Краснодарский край"
       />
     </RegisterStepLayout>
   );

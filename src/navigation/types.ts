@@ -28,7 +28,6 @@ export type RegisterScreenProps = NativeStackScreenProps<AuthStackParamList, 'Re
 
 export type RegisterStackParamList = {
   RegisterEmail: undefined;
-  RegisterCode: undefined;
   RegisterProfile: undefined;
   RegisterPassword: undefined;
 };
@@ -36,10 +35,6 @@ export type RegisterStackParamList = {
 export type RegisterEmailScreenProps = NativeStackScreenProps<
   RegisterStackParamList,
   'RegisterEmail'
->;
-export type RegisterCodeScreenProps = NativeStackScreenProps<
-  RegisterStackParamList,
-  'RegisterCode'
 >;
 export type RegisterProfileScreenProps = NativeStackScreenProps<
   RegisterStackParamList,
