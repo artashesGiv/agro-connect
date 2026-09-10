@@ -3,7 +3,12 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 export type RootTabParamList = {
   Home: undefined;
-  Map: undefined;
+  /**
+   * Параметры приходят со вкладки профиля: `focusFieldId` — подлететь к полю,
+   * `openCard` — заодно открыть его карточку. Карта их обнуляет, как только
+   * отработает, иначе возврат на вкладку каждый раз повторял бы перелёт.
+   */
+  Map: { focusFieldId?: string; openCard?: boolean } | undefined;
   Create: undefined;
   Placeholder: undefined;
   Profile: undefined;

@@ -23,7 +23,8 @@ There is no test runner, linter, or formatter configured. "Tests" in `SPEC.md` m
 Single-package Expo app. The backend is **Supabase** (hosted Postgres + Auth + Storage) — there is no server of our own. Entry: `index.ts` → `App.tsx`.
 
 - **`App.tsx`** is tiny: provider tree only — `SafeAreaProvider` → `PaperProvider theme={appTheme}` → `AuthProvider` → `RootNavigator`. All navigator wiring lives in `src/navigation/`.
-- **`src/navigation/`** — the composition root for navigation:
+- **`src/navigation/`** — the composition root for navigation. `RootTabParamList.Map` carries `{ focusFieldId?, openCard? }`: the profile tab uses them to send the map to a field, and the map clears them with `setParams` once it has acted, or every return to the tab would replay the flight.
+
   - `RootNavigator.tsx` — the auth gate. `status === 'loading'` → blank background view (native splash still up); else `<NavigationContainer theme={navigationTheme}>` + `<StatusBar style="light">` wrapping either `<MainTabs>` (`authenticated`) or `<AuthNavigator>` (everything else, **including `registering`** — during sign-up a session exists before the profile is written, and the user must not reach the tabs yet). Whole navigator is swapped, never `navigate()`.
   - `MainTabs.tsx` — the 5-tab bottom navigator: `Home`, `Map`, `Create`, `Placeholder` (`?`, temporary), `Profile`. Icons for all but `Create` come from `TAB_ICONS`; `Create` uses a custom `tabBarButton` (`CreateTabButton.tsx` — a big round `+`). Colors come from `navigationTheme` automatically. Every tab except `Home` is a placeholder for now.
   - `types.ts` — `RootTabParamList` + `AuthStackParamList` and per-screen prop aliases. Add new routes HERE first.
@@ -106,7 +107,7 @@ The whole backend is one hosted Supabase project (`api-docs/` holds the schema d
 
 Screens never touch `supabase` directly — they go through a feature `repository/` (and usually a thin hook next to it).
 
-- `features/map/repository/fieldsRepository.ts` + `hooks/useFields.ts` — the user's own `fields`. The domain type is `{ latitude, longitude }`, and PostGIS wants **longitude first** everywhere.
+- `services/fields/fieldsApi.ts` + `hooks/useFields.ts` — the user's own `fields`. It sits in `services/` rather than the map feature (and the hook in shared `hooks/`) because the profile tab lists the same fields, and a feature must not import from another feature. The domain type is `{ latitude, longitude }`, and PostGIS wants **longitude first** everywhere.
   - **Writes go out as EWKT** (`SRID=4326;POINT(lon lat)`, `SRID=4326;POLYGON((...))`). Bare WKT would arrive as SRID 0 and be rejected by a `geometry(...,4326)` column. `owner_id` is set by the client — the server does not fill it, and RLS demands `owner_id = auth.uid()`.
   - **Reads use `.geojson()`** (`Accept: application/geo+json`), so PostgREST calls `st_asgeojson` itself and the hex-EWKB problem is gone — no backend view was needed after all. Two requests, one per geometry column: PostgREST's behaviour when a select carries *two* geometry columns is undocumented. The response is parsed defensively because `.geojson()` is typed as `Record<string, unknown>`.
   - `boundary` is the outer ring only; holes are dropped on read and never produced on write.
@@ -130,16 +131,16 @@ src/
 │   │                       #   (session logic lives in src/services/auth — see "Auth — the session")
 │   └── map/                # the "Карта" tab — 2GIS map + the user's own fields:
 │       ├── components/     #   MapGLView (WebView), mapHtml.ts (page + bridge), FieldFormDialog, FieldCardDialog
-│       ├── hooks/          #   useFields, useCurrentLocation
-│       ├── repository/     #   data access for this feature — the only place that talks to Supabase
+│       ├── hooks/          #   useCurrentLocation (fields data lives in services/fields)
 │       ├── schemas/        #   zod schema for the new-field form
 │       └── screens/        #   the feature's screens
 ├── components/             # shared "dumb" UI reused across features — Icon.tsx, FormTextInput.tsx, Screen.tsx, ...
-├── hooks/                  # (empty) shared hooks — useDebounce, useKeyboardVisible, ...
+├── hooks/                  # shared hooks — useFields (map + profile both list them), ...
 ├── utils/                  # (empty) pure functions, formatters, constants
 ├── services/               # app-wide singletons:
 │   ├── supabase/           #   client + errors + dictionaries + storage
 │   ├── auth/               #   session (AuthProvider / useAuth)
+│   ├── fields/             #   fields CRUD — needed by both the map and the profile tab
 │   └── profile/            #   profiles row — needed by both AuthProvider and the profile tab
 ├── theme/                  # Paper theme (theme.ts) + useAppTheme — the app's one palette (see "UI & theming")
 └── types/                  # database.types.ts (generated) + global TS types

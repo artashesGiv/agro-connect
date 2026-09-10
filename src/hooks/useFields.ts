@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 
 import { toUserMessage } from '@/services/supabase';
 
-import { getFields, type Field } from '../repository/fieldsRepository';
+import { getFields, type Field } from '@/services/fields';
 
 type UseFieldsResult = {
   fields: Field[];
@@ -12,7 +12,8 @@ type UseFieldsResult = {
 };
 
 /**
- * Тонкая обёртка над репозиторием. Сама при монтировании не грузит: экран
+ * Тонкая обёртка над сервисом полей. Живёт в общих хуках, а не в фиче карты:
+ * тот же список нужен и вкладке профиля. Сама при монтировании не грузит: экран
  * вызывает `reload` при каждом появлении вкладки, и автозагрузка означала бы
  * два одинаковых запроса подряд.
  *

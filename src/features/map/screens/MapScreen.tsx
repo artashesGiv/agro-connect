@@ -18,8 +18,9 @@ import {
   type MapMessage,
 } from '../components/mapHtml';
 import { useCurrentLocation } from '../hooks/useCurrentLocation';
-import { useFields } from '../hooks/useFields';
-import { createField, updateField, type Coordinates } from '../repository/fieldsRepository';
+import { useFields } from '@/hooks/useFields';
+import type { MapScreenProps } from '@/navigation/types';
+import { centroid, createField, updateField, type Coordinates } from '@/services/fields';
 import { fieldDefaults, type FieldFormValues } from '../schemas/fieldSchema';
 
 /**
@@ -60,7 +61,7 @@ type Pending =
  * Верхние отступы даёт шапка вкладки (`headerShown: true` в `MainTabs`),
  * поэтому обёртка `Screen` здесь не нужна.
  */
-export default function MapScreen() {
+export default function MapScreen({ navigation, route }: MapScreenProps) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
@@ -131,9 +132,9 @@ export default function MapScreen() {
       // просим карту перемерить контейнер: иначе она может остаться с
       // размером, который был у WebView до показа.
       mapRef.current?.invalidateSize();
-      // Во время создания камеру не трогаем: незаконченный контур уехал бы
-      // за экран.
-      if (modeRef.current === 'idle') void goToUser();
+      // Камеру не трогаем, если создаём поле (незаконченный контур уехал бы
+      // за экран) или если нас позвали к конкретному полю с другой вкладки.
+      if (modeRef.current === 'idle' && !focusPendingRef.current) void goToUser();
     }, [goToUser, reload]),
   );
 
@@ -156,6 +157,28 @@ export default function MapScreen() {
     }
     mapRef.current?.setFields(shapes);
   }, [fields]);
+
+  /**
+   * Со вкладки профиля приходит id поля: подлетаем к нему и, если просили,
+   * открываем карточку. Ждём, пока поле окажется в списке — навигация вполне
+   * может опередить загрузку. Параметры сбрасываем, иначе каждый возврат на
+   * вкладку повторял бы перелёт.
+   */
+  const focusFieldId = route.params?.focusFieldId;
+  const focusOpensCard = route.params?.openCard === true;
+  const focusPendingRef = useRef(false);
+  focusPendingRef.current = focusFieldId !== undefined;
+
+  useEffect(() => {
+    if (!focusFieldId) return;
+    const target = fields.find((item) => item.id === focusFieldId);
+    if (!target) return;
+
+    const point = target.center ?? (target.boundary ? centroid(target.boundary) : null);
+    if (point) mapRef.current?.flyTo([point.longitude, point.latitude], USER_ZOOM);
+    if (focusOpensCard) setCardFieldId(target.id);
+    navigation.setParams({ focusFieldId: undefined, openCard: undefined });
+  }, [fields, focusFieldId, focusOpensCard, navigation]);
 
   const stopDrawing = useCallback(() => {
     mapRef.current?.cancelDrawing();

@@ -4,7 +4,7 @@ import { Button, Dialog, type MD3Theme, Portal } from 'react-native-paper';
 
 import { useAppTheme } from '@/theme';
 
-import type { Field } from '../repository/fieldsRepository';
+import type { Field } from '@/services/fields';
 
 type FieldCardDialogProps = {
   field: Field | null;
