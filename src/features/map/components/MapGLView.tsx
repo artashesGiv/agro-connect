@@ -13,6 +13,8 @@ import {
   loadDrawingScript,
   parseMapMessage,
   requestCenterScript,
+  restartPolygonScript,
+  setEditInteractionScript,
   setFieldsScript,
   startPolygonScript,
   undoScript,
@@ -48,10 +50,14 @@ export type MapGLViewHandle = {
   /** Лениво подтянуть рисовалку — ответ придёт `drawing-ready` / `drawing-error`. */
   loadDrawing: () => void;
   startPolygon: () => void;
+  /** Стереть контур и вернуться в фазу рисования. */
+  restartPolygon: () => void;
   undo: () => void;
   /** Забрать нарисованный контур — ответ `polygon` / `polygon-invalid`. */
   finishPolygon: () => void;
   cancelDrawing: () => void;
+  /** Тумблер фазы правки: жесты вершинам (`true`) или карте (`false`). */
+  setEditInteraction: (editing: boolean) => void;
 };
 
 type MapGLViewProps = {
@@ -146,9 +152,12 @@ export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function Ma
       setFields: (polygons, points) => run('setFields', setFieldsScript(polygons, points)),
       loadDrawing: () => run('loadDrawing', loadDrawingScript()),
       startPolygon: () => run('startPolygon', startPolygonScript()),
+      restartPolygon: () => run('restartPolygon', restartPolygonScript()),
       undo: () => run('undo', undoScript()),
       finishPolygon: () => run('finishPolygon', finishPolygonScript()),
       cancelDrawing: () => run('cancelDrawing', cancelDrawingScript()),
+      setEditInteraction: (editing) =>
+        run('setEditInteraction', setEditInteractionScript(editing)),
     }),
     [run],
   );

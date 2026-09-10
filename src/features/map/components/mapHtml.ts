@@ -46,6 +46,8 @@ export type MapMessage =
   | { type: 'center'; center: LngLat }
   | { type: 'drawing-ready' }
   | { type: 'drawing-error'; message: string }
+  /** Контур замкнулся — пора в фазу правки. */
+  | { type: 'contour-closed' }
   | { type: 'polygon'; ring: LngLat[] }
   | { type: 'polygon-invalid' };
 
@@ -62,6 +64,7 @@ export function parseMapMessage(raw: string): MapMessage | null {
     switch (type) {
       case 'ready':
       case 'drawing-ready':
+      case 'contour-closed':
       case 'polygon-invalid':
         return { type };
       case 'error':
@@ -137,6 +140,19 @@ export function finishPolygonScript(): string {
 
 export function cancelDrawingScript(): string {
   return 'window.__map && window.__map.cancelDrawing(); true;';
+}
+
+/** Стереть контур и вернуться в фазу рисования. */
+export function restartPolygonScript(): string {
+  return 'window.__map && window.__map.restartPolygon(); true;';
+}
+
+/**
+ * Тумблер фазы правки: `true` — жесты уходят вершинам (карта заблокирована),
+ * `false` — карта снова панорамируется.
+ */
+export function setEditInteractionScript(editing: boolean): string {
+  return `window.__map && window.__map.setEditInteraction(${String(editing)}); true;`;
 }
 
 /** Цвета страницы — из темы приложения, чтобы карта не выбивалась. */
@@ -374,30 +390,87 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
                 map: map,
                 mapgl: mapgl
               });
-              // Баг адаптера 0.4.0: setDoubleClickToZoom реализован копипастой
-              // с setDraggability и зовёт map.blockInteraction(), то есть гасит
-              // ВСЮ интерактивность карты. terra-draw вызывает его с false при
-              // старте режима — и карта перестаёт двигаться, хотя обводить поле
-              // без панорамирования невозможно. Глушим: двойной тап останется
-              // зумом во время рисования, это несравнимо меньшая беда.
+              // Оба метода адаптера 0.4.0 сводятся к map.blockInteraction() /
+              // unblockInteraction(): setDoubleClickToZoom — из-за копипасты с
+              // setDraggability, и оба вызываются terra-draw по своим поводам
+              // (первый на старте режима, второй на каждом pointerup). В
+              // результате интерактивность карты меняется у нас под руками, и
+              // тумблер фазы правки работал бы через раз. Забираем управление
+              // себе целиком — см. setEditInteraction. Цена: во время
+              // рисования остаётся живым зум по двойному тапу.
               adapter.setDoubleClickToZoom = function () {};
+              adapter.setDraggability = function () {};
+
               drawing = new td.TerraDraw({
                 adapter: adapter,
+                // undo/redo в terra-draw — opt-in: без этой опции canUndo()
+                // всегда false и «Шаг назад» ничего не делает. Нужен именно
+                // modeLevel — он убирает последнюю поставленную точку (и
+                // работает только пока фигура рисуется).
+                undoRedo: { modeLevel: new td.TerraDrawModeUndoRedo() },
                 modes: [
                   new td.TerraDrawPolygonMode({
-                    // editable даёт перетаскивание вершин прямо в режиме
-                    // рисования — отдельный режим выбора не нужен.
-                    editable: true,
+                    // Без editable: в фазе рисования тап ставит точку, а
+                    // протяжка всегда панорамирует карту. Правка вершин живёт
+                    // в отдельной фазе, где жесты разводит тумблер.
                     showCoordinatePoints: true,
                     validation: td.ValidateNotSelfIntersecting
+                  }),
+                  new td.TerraDrawSelectMode({
+                    flags: {
+                      polygon: {
+                        feature: {
+                          // Полигон целиком не таскаем: одно случайное
+                          // движение не должно унести поле в другой район.
+                          draggable: false,
+                          coordinates: {
+                            draggable: true,
+                            // Потянув серединку ребра, можно добавить вершину.
+                            midpoints: { draggable: true }
+                          }
+                        }
+                      }
+                    }
                   })
                 ]
+              });
+
+              // Замыкание контура (тапом по замыкающей точке) сразу переводит
+              // в фазу правки: создать вторую фигуру после этого нечем.
+              drawing.on('finish', function (id) {
+                try {
+                  drawing.setMode('select');
+                  drawing.selectFeature(id);
+                } catch (e) {}
+                send({ type: 'contour-closed' });
               });
             }
             drawing.start();
             drawing.setMode('polygon');
+            map.unblockInteraction();
           } catch (e) {
             send({ type: 'drawing-error', message: 'draw-start-failed: ' + String(e) });
+          }
+        },
+
+        restartPolygon: function () {
+          if (!drawing) return;
+          try {
+            drawing.clear();
+            drawing.setMode('polygon');
+            map.unblockInteraction();
+          } catch (e) {
+            send({ type: 'drawing-error', message: 'draw-restart-failed: ' + String(e) });
+          }
+        },
+
+        setEditInteraction: function (editing) {
+          // Единственное место, которое трогает интерактивность карты после
+          // старта рисования — методы адаптера заглушены именно ради этого.
+          if (editing) {
+            map.blockInteraction();
+          } else {
+            map.unblockInteraction();
           }
         },
 
@@ -417,12 +490,14 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
           var polygons = drawing.getSnapshot().filter(function (feature) {
             return feature.geometry && feature.geometry.type === 'Polygon';
           });
-          var latest = polygons[polygons.length - 1];
-          if (!latest) {
+          // Первая, а не последняя: если вторая фигура всё-таки как-то
+          // появилась, сохранить надо ту, которую человек рисовал.
+          var target = polygons[0];
+          if (!target) {
             send({ type: 'polygon-invalid' });
             return;
           }
-          var ring = cleanRing(latest.geometry.coordinates[0] || []);
+          var ring = cleanRing(target.geometry.coordinates[0] || []);
           if (ring.length < config.minRingVertices) {
             send({ type: 'polygon-invalid' });
             return;
@@ -437,8 +512,7 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
             try { drawing.clear(); } catch (e) {}
             try { drawing.stop(); } catch (e) {}
           }
-          // Страховка от того же бага адаптера: интерактивность карты
-          // восстанавливаем сами, а не надеемся на его бухгалтерию.
+          // Интерактивность карты возвращаем сами: методы адаптера заглушены.
           try { map.unblockInteraction(); } catch (e) {}
         }
       };

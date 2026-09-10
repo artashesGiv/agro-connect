@@ -1,6 +1,6 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, StyleSheet, View } from 'react-native';
+import { BackHandler, StyleSheet, Text, View } from 'react-native';
 import { Button, IconButton, type MD3Theme, Menu, Snackbar, Surface } from 'react-native-paper';
 
 import { Icon } from '@/components/Icon';
@@ -23,8 +23,13 @@ import { fieldDefaults, type FieldFormValues } from '../schemas/fieldSchema';
  */
 let warnedThisSession = false;
 
-/** `idle` — обычная карта; остальные два — режимы создания поля. */
-type Mode = 'idle' | 'point' | 'polygon';
+/**
+ * `idle` — обычная карта. Остальные три — фазы создания поля:
+ * `point` — прицел в центре экрана;
+ * `drawing` — тап ставит вершину, протяжка панорамирует карту;
+ * `editing` — контур замкнут, создать второй нечем, вершины можно править.
+ */
+type Mode = 'idle' | 'point' | 'drawing' | 'editing';
 
 /** Геометрия, уже нарисованная, но ещё не сохранённая. */
 type Draft = { center: Coordinates } | { boundary: Coordinates[] };
@@ -53,6 +58,8 @@ export default function MapScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [preparingDrawing, setPreparingDrawing] = useState(false);
   const [locating, setLocating] = useState(false);
+  /** Тумблер фазы правки: `true` — жесты уходят вершинам, `false` — карте. */
+  const [editingVertices, setEditingVertices] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -80,7 +87,7 @@ export default function MapScreen() {
   useFocusEffect(
     useCallback(() => {
       void reload();
-      // Во время рисования камеру не трогаем: незаконченный контур уехал бы
+      // Во время создания камеру не трогаем: незаконченный контур уехал бы
       // за экран.
       if (modeRef.current === 'idle') void goToUser();
     }, [goToUser, reload]),
@@ -103,11 +110,12 @@ export default function MapScreen() {
   const stopDrawing = useCallback(() => {
     mapRef.current?.cancelDrawing();
     setMode('idle');
+    setEditingVertices(false);
     setDraft(null);
     setSaveError(null);
   }, []);
 
-  // Системная кнопка «назад» на Android выходит из режима рисования, а не из
+  // Системная кнопка «назад» на Android выходит из режима создания, а не из
   // приложения — иначе выйти из него можно было бы только кнопкой «Отмена».
   useFocusEffect(
     useCallback(() => {
@@ -125,12 +133,33 @@ export default function MapScreen() {
     mapRef.current?.loadDrawing();
   }, []);
 
+  const restart = useCallback(() => {
+    mapRef.current?.restartPolygon();
+    setMode('drawing');
+    setEditingVertices(false);
+  }, []);
+
+  const toggleVertexEditing = useCallback(() => {
+    setEditingVertices((current) => {
+      const next = !current;
+      mapRef.current?.setEditInteraction(next);
+      return next;
+    });
+  }, []);
+
   const handleMapEvent = useCallback((message: MapMessage) => {
     switch (message.type) {
       case 'center':
         setDraft({
           center: { longitude: message.center[0], latitude: message.center[1] },
         });
+        break;
+      case 'contour-closed':
+        setMode('editing');
+        // Входим в правку с жестами у карты: так фаза не начинается с
+        // сюрприза «карта не двигается».
+        setEditingVertices(false);
+        mapRef.current?.setEditInteraction(false);
         break;
       case 'polygon':
         setDraft({
@@ -142,7 +171,7 @@ export default function MapScreen() {
         break;
       case 'drawing-ready':
         setPreparingDrawing(false);
-        setMode('polygon');
+        setMode('drawing');
         mapRef.current?.startPolygon();
         break;
       case 'drawing-error':
@@ -189,14 +218,14 @@ export default function MapScreen() {
     [draft, reload, stopDrawing, user],
   );
 
-  const drawing = mode !== 'idle';
-
   // Мемоизируем: `FieldFormDialog` сбрасывает форму при смене `defaults`, и
   // новый объект на каждый рендер затирал бы то, что пользователь печатает.
   const formDefaults = useMemo(
     () => fieldDefaults(fields.length, profile?.region ?? null),
     [fields.length, profile?.region],
   );
+
+  const creating = mode !== 'idle';
 
   return (
     <View style={styles.container}>
@@ -208,7 +237,63 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      {!drawing ? (
+      {creating ? (
+        <View style={styles.bottomBar} pointerEvents="box-none">
+          <Surface style={styles.hint} elevation={2}>
+            <Text style={styles.hintText}>{hintFor(mode, editingVertices)}</Text>
+          </Surface>
+
+          <Surface style={styles.panel} elevation={3}>
+            <Button onPress={stopDrawing} compact>
+              Отмена
+            </Button>
+
+            {mode === 'drawing' ? (
+              <Button onPress={() => mapRef.current?.undo()} compact>
+                Шаг назад
+              </Button>
+            ) : null}
+
+            {mode === 'editing' ? (
+              <>
+                <Button onPress={restart} compact>
+                  Начать заново
+                </Button>
+                <IconButton
+                  // Состояние тумблера должно быть видно без чтения иконки,
+                  // поэтому меняем не только глиф, но и заливку.
+                  icon={editingVertices ? 'vector-square-edit' : 'cursor-move'}
+                  mode="contained"
+                  size={20}
+                  containerColor={
+                    editingVertices ? theme.colors.primary : theme.colors.surfaceVariant
+                  }
+                  iconColor={
+                    editingVertices ? theme.colors.onPrimary : theme.colors.onSurfaceVariant
+                  }
+                  onPress={toggleVertexEditing}
+                  accessibilityLabel={
+                    editingVertices ? 'Включить движение карты' : 'Включить правку точек'
+                  }
+                  style={styles.toggle}
+                />
+              </>
+            ) : null}
+
+            <Button
+              mode="contained"
+              compact
+              onPress={() =>
+                mode === 'point'
+                  ? mapRef.current?.requestCenter()
+                  : mapRef.current?.finishPolygon()
+              }
+            >
+              {mode === 'point' ? 'Поставить здесь' : 'Готово'}
+            </Button>
+          </Surface>
+        </View>
+      ) : (
         <>
           <IconButton
             icon="crosshairs-gps"
@@ -260,23 +345,6 @@ export default function MapScreen() {
             </Menu>
           </View>
         </>
-      ) : (
-        <Surface style={styles.panel} elevation={3}>
-          <Button onPress={stopDrawing}>Отмена</Button>
-          {mode === 'polygon' ? (
-            <Button onPress={() => mapRef.current?.undo()}>Шаг назад</Button>
-          ) : null}
-          <Button
-            mode="contained"
-            onPress={() =>
-              mode === 'point'
-                ? mapRef.current?.requestCenter()
-                : mapRef.current?.finishPolygon()
-            }
-          >
-            {mode === 'point' ? 'Поставить здесь' : 'Готово'}
-          </Button>
-        </Surface>
       )}
 
       <FieldFormDialog
@@ -296,6 +364,21 @@ export default function MapScreen() {
       </Snackbar>
     </View>
   );
+}
+
+function hintFor(mode: Mode, editingVertices: boolean): string {
+  switch (mode) {
+    case 'point':
+      return 'Наведите центр карты на поле';
+    case 'drawing':
+      return 'Ставьте точки по контуру';
+    case 'editing':
+      return editingVertices
+        ? 'Потяните точки, чтобы поправить контур'
+        : 'Контур замкнут. Включите правку, чтобы двигать точки';
+    default:
+      return '';
+  }
 }
 
 const makeStyles = (theme: MD3Theme) =>
@@ -335,18 +418,38 @@ const makeStyles = (theme: MD3Theme) =>
       borderRadius: 24,
       margin: 0,
     },
-    panel: {
+    // Плашка и подсказка по центру и по содержимому: растянутая на всю ширину
+    // панель оставляла слева пустое место, которое читалось как потерянная
+    // кнопка.
+    bottomBar: {
       position: 'absolute',
-      right: 16,
+      right: 8,
       bottom: 16,
-      left: 16,
+      left: 8,
+      alignItems: 'center',
+      gap: 8,
+    },
+    hint: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 16,
+      backgroundColor: theme.colors.surface,
+    },
+    hintText: {
+      color: theme.colors.onSurfaceVariant,
+      fontSize: 13,
+      textAlign: 'center',
+    },
+    panel: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'flex-end',
-      gap: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
       borderRadius: 28,
       backgroundColor: theme.colors.surface,
+    },
+    toggle: {
+      margin: 0,
     },
   });
