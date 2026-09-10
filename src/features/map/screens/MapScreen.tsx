@@ -147,6 +147,9 @@ export default function MapScreen() {
         break;
       case 'drawing-error':
         setPreparingDrawing(false);
+        // Пользователю причина ни о чём не скажет, а в Metro она нужна: сюда
+        // приходит и «скрипт не загрузился», и «CDN отдал не тот MIME».
+        if (__DEV__) console.warn('[Карта] рисовалка: ' + message.message);
         setSnack('Не удалось загрузить инструмент рисования');
         break;
       default:

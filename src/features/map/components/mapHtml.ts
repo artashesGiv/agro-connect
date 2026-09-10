@@ -28,10 +28,16 @@ export const MIN_RING_VERTICES = 3;
 /**
  * Версии пинуем намертво: плавающая версия у рисовалки — это сломанная фича
  * в один прекрасный день без единого коммита с нашей стороны.
+ *
+ * CDN — unpkg, а не jsDelivr, и это не вкусовщина: UMD-сборка адаптера лежит
+ * в файле с расширением `.cjs`, jsDelivr отдаёт такой файл как
+ * `Content-Type: application/node` вместе с `X-Content-Type-Options: nosniff`,
+ * и WebView отказывается его исполнять. unpkg отдаёт `text/javascript` —
+ * именно unpkg показан и в README самого адаптера.
  */
-const TERRA_DRAW_URL = 'https://cdn.jsdelivr.net/npm/terra-draw@1.33.0/dist/terra-draw.umd.js';
+const TERRA_DRAW_URL = 'https://unpkg.com/terra-draw@1.33.0/dist/terra-draw.umd.js';
 const TERRA_DRAW_ADAPTER_URL =
-  'https://cdn.jsdelivr.net/npm/@2gis/mapgl-terra-draw@0.4.0/dist/mapgl-terra-draw.umd.cjs';
+  'https://unpkg.com/@2gis/mapgl-terra-draw@0.4.0/dist/mapgl-terra-draw.umd.cjs';
 
 /** Сообщения, которые страница присылает в React Native. */
 export type MapMessage =
