@@ -307,6 +307,25 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
     }
   }, []);
 
+  /**
+   * Страницу пересоздали: рисовалка и начатый контур исчезли вместе с ней.
+   * Выходим из режима создания, иначе на панели остались бы кнопки, которым
+   * уже нечем управлять.
+   */
+  const handleMapReload = useCallback(() => {
+    if (modeRef.current !== 'idle') {
+      setSnack('Карта перезагрузилась, создание отменено');
+    }
+    setMode('idle');
+    setEditingVertices(false);
+    setPending(null);
+    setGeometryTargetId(null);
+    editRingRef.current = null;
+    // Тапы по полям на время создания глушились, и это состояние переживает
+    // перезагрузку страницы — возвращаем его руками.
+    mapRef.current?.setFieldTaps(true);
+  }, []);
+
   const handleSave = useCallback(
     async (values: FieldFormValues) => {
       if (!pending) return;
@@ -401,7 +420,7 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
 
   return (
     <View style={styles.container}>
-      <MapGLView ref={mapRef} onEvent={handleMapEvent} />
+      <MapGLView ref={mapRef} onEvent={handleMapEvent} onReload={handleMapReload} />
 
       {mode === 'point' ? (
         <View style={styles.crosshair} pointerEvents="none">

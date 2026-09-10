@@ -73,6 +73,11 @@ export type MapGLViewHandle = {
 type MapGLViewProps = {
   /** События страницы, кроме готовности и фатальных ошибок — их держим внутри. */
   onEvent?: (message: MapMessage) => void;
+  /**
+   * Страница пересоздаётся. Всё, что жило внутри неё — начатый контур,
+   * загруженная рисовалка — исчезло, и экран обязан это учесть.
+   */
+  onReload?: () => void;
 };
 
 type Status = 'loading' | 'ready' | 'error';
@@ -83,7 +88,7 @@ type Status = 'loading' | 'ready' | 'error';
  * в `mapHtml.ts`.
  */
 export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function MapGLView(
-  { onEvent },
+  { onEvent, onReload },
   ref,
 ) {
   const theme = useAppTheme();
@@ -97,6 +102,13 @@ export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function Ma
    * перелёта после готовности.
    */
   const pendingRef = useRef(new Map<string, string>());
+  /**
+   * Команды, описывающие состояние страницы, а не разовое действие: слой полей
+   * и разрешение тапов. Их проигрываем заново при каждой готовности карты —
+   * после «Повторить» WebView поднимается пустым, и без этого поля исчезали
+   * бы до следующей перезагрузки списка.
+   */
+  const stateRef = useRef(new Map<string, string>());
   const statusRef = useRef<Status>('loading');
 
   const [status, setStatus] = useState<Status>(MAPGL_KEY ? 'loading' : 'error');
@@ -151,8 +163,14 @@ export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function Ma
     [changeStatus, clearTimer],
   );
 
-  /** Выполняет команду сразу или откладывает до готовности карты. */
-  const run = useCallback((command: string, script: string) => {
+  /**
+   * Выполняет команду сразу или откладывает до готовности карты.
+   *
+   * @param persist команда описывает состояние страницы и должна повторяться
+   * после каждой перезагрузки, а не выполняться однократно.
+   */
+  const run = useCallback((command: string, script: string, persist = false) => {
+    if (persist) stateRef.current.set(command, script);
     if (statusRef.current !== 'ready') {
       pendingRef.current.set(command, script);
       return;
@@ -166,8 +184,8 @@ export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function Ma
       flyTo: (center, zoom) => run('flyTo', flyToScript(center, zoom)),
       requestCenter: () => run('requestCenter', requestCenterScript()),
       invalidateSize: () => run('invalidateSize', invalidateSizeScript()),
-      setFields: (shapes) => run('setFields', setFieldsScript(shapes)),
-      setFieldTaps: (enabled) => run('setFieldTaps', setFieldTapsScript(enabled)),
+      setFields: (shapes) => run('setFields', setFieldsScript(shapes), true),
+      setFieldTaps: (enabled) => run('setFieldTaps', setFieldTapsScript(enabled), true),
       loadDrawing: () => run('loadDrawing', loadDrawingScript()),
       startPolygon: () => run('startPolygon', startPolygonScript()),
       editPolygon: (ring) => run('editPolygon', editPolygonScript(ring)),
@@ -204,9 +222,14 @@ export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function Ma
 
       clearTimer();
       changeStatus('ready');
-      const pending = pendingRef.current;
+      // Состояние страницы восстанавливаем всегда, отложенные действия —
+      // поверх него: по одинаковым ключам побеждает более свежее.
+      const scripts = new Map(stateRef.current);
+      for (const [command, script] of pendingRef.current) {
+        scripts.set(command, script);
+      }
       pendingRef.current = new Map();
-      for (const script of pending.values()) {
+      for (const script of scripts.values()) {
         webViewRef.current?.injectJavaScript(script);
       }
     },
@@ -219,11 +242,14 @@ export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function Ma
   }, [clearTimer, fail]);
 
   const retry = useCallback(() => {
+    // `stateRef` намеренно переживает перезагрузку — это и есть то, чем новую
+    // страницу нужно наполнить, когда она поднимется.
     pendingRef.current = new Map();
     clearTimer();
     changeStatus('loading');
     setAttempt((value) => value + 1);
-  }, [changeStatus, clearTimer]);
+    onReload?.();
+  }, [changeStatus, clearTimer, onReload]);
 
   if (status === 'error') {
     return (
