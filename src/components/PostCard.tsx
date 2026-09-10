@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { Avatar, Menu, Text, type MD3Theme } from 'react-native-paper';
 
+import type { ReactionSummary } from '@/types/reactions';
 import { useAppTheme } from '@/theme';
 import { Icon, type IconName } from './Icon';
+import { ReactionControl } from './ReactionControl';
 
 /** Автор поста — ровно то, что нужно карточке (совместимо с `PostAuthor` из сервиса). */
 export type PostCardAuthor = {
@@ -16,12 +18,15 @@ type PostActionProps = {
   label: string;
   /** Подсветка активного состояния (закладка). */
   active?: boolean;
+  /** Счётчик рядом с иконкой; 0 / undefined — не показываем. */
+  count?: number;
   onPress?: () => void;
 };
 
-/** Действие под постом — просто иконка (счётчики пока не показываем). */
-function PostAction({ icon, label, active, onPress }: PostActionProps) {
+/** Действие под постом — иконка и необязательный счётчик. */
+function PostAction({ icon, label, active, count, onPress }: PostActionProps) {
   const theme = useAppTheme();
+  const color = active ? theme.colors.primary : theme.colors.onSurfaceVariant;
   return (
     <Pressable
       onPress={onPress}
@@ -34,11 +39,8 @@ function PostAction({ icon, label, active, onPress }: PostActionProps) {
       accessibilityLabel={label}
       accessibilityState={active != null ? { selected: active } : undefined}
     >
-      <Icon
-        name={icon}
-        size={18}
-        color={active ? theme.colors.primary : theme.colors.onSurfaceVariant}
-      />
+      <Icon name={icon} size={18} color={color} />
+      {count ? <Text style={[actionStyles.count, { color }]}>{count}</Text> : null}
     </Pressable>
   );
 }
@@ -47,11 +49,17 @@ const actionStyles = StyleSheet.create({
   action: {
     minWidth: 32,
     minHeight: 32,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
   },
   pressed: {
     opacity: 0.6,
+  },
+  count: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
 
@@ -61,7 +69,12 @@ type PostCardProps = {
   description?: string;
   images?: string[];
   bookmarked?: boolean;
-  onLike?: () => void;
+  /** Тап по телу поста (заголовок/описание/фото) — обычно переход на PostDetail. */
+  onPress?: () => void;
+  /** Свод реакций по типам. Без него в ряду действий рисуется статичная иконка. */
+  reactions?: ReactionSummary[];
+  onToggleReaction?: (code: string) => void;
+  commentCount?: number;
   onComment?: () => void;
   onBookmark?: () => void;
   onMap?: () => void;
@@ -84,7 +97,10 @@ export function PostCard({
   description,
   images,
   bookmarked,
-  onLike,
+  onPress,
+  reactions,
+  onToggleReaction,
+  commentCount,
   onComment,
   onBookmark,
   onMap,
@@ -169,25 +185,41 @@ export function PostCard({
         ) : null}
       </View>
 
-      <View style={styles.body}>
-        <Text style={styles.title}>{title}</Text>
-        {description ? (
-          <Text style={styles.description}>{description}</Text>
-        ) : null}
-      </View>
+      <Pressable
+        onPress={onPress}
+        disabled={!onPress}
+        style={({ pressed }) => (pressed && onPress ? styles.bodyPressed : undefined)}
+        accessibilityRole={onPress ? 'button' : undefined}
+      >
+        <View style={styles.body}>
+          <Text style={styles.title}>{title}</Text>
+          {description ? (
+            <Text style={styles.description}>{description}</Text>
+          ) : null}
+        </View>
 
-      {cover ? (
-        <Image
-          source={{ uri: cover }}
-          style={styles.cover}
-          resizeMode="cover"
-          accessibilityIgnoresInvertColors
-        />
-      ) : null}
+        {cover ? (
+          <Image
+            source={{ uri: cover }}
+            style={styles.cover}
+            resizeMode="cover"
+            accessibilityIgnoresInvertColors
+          />
+        ) : null}
+      </Pressable>
 
       <View style={styles.actions}>
-        <PostAction icon="thumb-up-outline" label="Нравится" onPress={onLike} />
-        <PostAction icon="comment-outline" label="Комментарии" onPress={onComment} />
+        {reactions && onToggleReaction ? (
+          <ReactionControl reactions={reactions} onToggle={onToggleReaction} />
+        ) : (
+          <PostAction icon="thumb-up-outline" label="Реакция" />
+        )}
+        <PostAction
+          icon="comment-outline"
+          label="Комментарии"
+          count={commentCount}
+          onPress={onComment}
+        />
         <PostAction
           icon={bookmarked ? 'bookmark' : 'bookmark-outline'}
           label={bookmarked ? 'Убрать из закладок' : 'В закладки'}
@@ -243,6 +275,9 @@ const makeStyles = (theme: MD3Theme) =>
       paddingHorizontal: 16,
       paddingTop: 10,
       gap: 4,
+    },
+    bodyPressed: {
+      opacity: 0.6,
     },
     title: {
       color: theme.colors.onSurface,

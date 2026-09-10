@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -8,17 +8,41 @@ import {
   type CreatePostFormValues,
 } from '../schemas/createPostSchema';
 
+type CreatePostMeta = {
+  /** id редактируемого поста; `null` — режим создания. */
+  postId: string | null;
+};
+
+const CreatePostMetaContext = createContext<CreatePostMeta>({ postId: null });
+
+/** Режим мастера: создание или редактирование конкретного поста. */
+export function useCreatePostMeta(): CreatePostMeta {
+  return useContext(CreatePostMetaContext);
+}
+
+type Props = {
+  children: ReactNode;
+  /** Предзаполнение для режима редактирования. */
+  initialValues?: Partial<CreatePostFormValues>;
+  /** id поста — включает режим редактирования (submit → update). */
+  postId?: string | null;
+};
+
 /**
- * Один `useForm` на весь мастер создания поста. Экраны шагов берут форму через
- * `useFormContext<CreatePostFormValues>()`. Живёт внутри вкладки «Создать»
- * (не в App.tsx) — как `RegisterFormProvider` для регистрации.
+ * Один `useForm` на весь мастер. Экраны шагов берут форму через
+ * `useFormContext<CreatePostFormValues>()`, а режим — через `useCreatePostMeta()`.
+ * Живёт внутри вкладки «Создать» либо внутри экрана `EditPost` в стеке профиля.
  */
-export function CreatePostProvider({ children }: { children: ReactNode }) {
+export function CreatePostProvider({ children, initialValues, postId = null }: Props) {
   const form = useForm<CreatePostFormValues>({
     resolver: zodResolver(createPostSchema),
-    defaultValues: createPostDefaults,
+    defaultValues: { ...createPostDefaults, ...initialValues },
     mode: 'onTouched',
   });
 
-  return <FormProvider {...form}>{children}</FormProvider>;
+  return (
+    <CreatePostMetaContext.Provider value={{ postId }}>
+      <FormProvider {...form}>{children}</FormProvider>
+    </CreatePostMetaContext.Provider>
+  );
 }

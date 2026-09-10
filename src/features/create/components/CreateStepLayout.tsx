@@ -1,9 +1,12 @@
 import { useMemo, type ReactNode } from 'react';
 import { Keyboard, StyleSheet, Text, View } from 'react-native';
-import { Button, IconButton, type MD3Theme } from 'react-native-paper';
+import { Button, type MD3Theme } from 'react-native-paper';
 
+import { AppHeader } from '@/components/AppHeader';
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 import { useAppTheme } from '@/theme';
+
+import { useCreatePostMeta } from '../forms/CreatePostProvider';
 
 const TOTAL_STEPS = 5;
 
@@ -12,7 +15,7 @@ type CreateStepLayoutProps = {
   step: number;
   title: string;
   subtitle?: string;
-  /** Не передаётся на первом шаге — там кнопки «назад» нет. */
+  /** Не передаётся на первом шаге создания — там кнопки «назад» нет. */
   onBack?: () => void;
   onNext: () => void;
   nextLabel?: string;
@@ -22,9 +25,8 @@ type CreateStepLayoutProps = {
 };
 
 /**
- * Оболочка шага мастера создания поста: назад + прогресс + заголовок + тело +
- * кнопка. Почти копия `RegisterStepLayout` — при желании позже вынести общий
- * `WizardStepLayout` в `src/components`.
+ * Оболочка шага мастера: общий `AppHeader` (с «Новая публикация» / «Редактирование»)
+ * + прогресс-бар + заголовок шага + тело + кнопка. Почти копия `RegisterStepLayout`.
  */
 export function CreateStepLayout({
   step,
@@ -39,20 +41,14 @@ export function CreateStepLayout({
 }: CreateStepLayoutProps) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const { postId } = useCreatePostMeta();
+  const modeLabel = postId ? 'Редактирование' : 'Новая публикация';
 
   return (
-    <KeyboardAwareScreen contentContainerStyle={styles.content}>
-      <View style={styles.topBar}>
-        {onBack ? (
-          <IconButton
-            icon="arrow-left"
-            onPress={onBack}
-            accessibilityLabel="Назад"
-            style={styles.backButton}
-          />
-        ) : (
-          <View style={styles.backSpacer} />
-        )}
+    <View style={styles.root}>
+      <AppHeader title={modeLabel} onBack={onBack} />
+
+      <View style={styles.progressRow}>
         <View style={styles.progressTrack}>
           <View
             style={[styles.progressFill, { width: `${(step / TOTAL_STEPS) * 100}%` }]}
@@ -60,54 +56,50 @@ export function CreateStepLayout({
         </View>
       </View>
 
-      <View style={styles.body}>
-        <Text style={styles.stepCounter}>{`Шаг ${step} из ${TOTAL_STEPS}`}</Text>
-        <Text style={styles.title}>{title}</Text>
-        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      <KeyboardAwareScreen edges={['bottom']} contentContainerStyle={styles.content}>
+        <View style={styles.body}>
+          <Text style={styles.stepCounter}>{`Шаг ${step} из ${TOTAL_STEPS}`}</Text>
+          <Text style={styles.title}>{title}</Text>
+          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
 
-        <View style={styles.fields}>{children}</View>
+          <View style={styles.fields}>{children}</View>
 
-        <Button
-          mode="contained"
-          onPress={() => {
-            Keyboard.dismiss();
-            onNext();
-          }}
-          loading={nextLoading}
-          disabled={nextDisabled || nextLoading}
-          style={styles.nextButton}
-          accessibilityLabel={nextLabel}
-        >
-          {nextLabel}
-        </Button>
-      </View>
-    </KeyboardAwareScreen>
+          <Button
+            mode="contained"
+            onPress={() => {
+              Keyboard.dismiss();
+              onNext();
+            }}
+            loading={nextLoading}
+            disabled={nextDisabled || nextLoading}
+            style={styles.nextButton}
+            accessibilityLabel={nextLabel}
+          >
+            {nextLabel}
+          </Button>
+        </View>
+      </KeyboardAwareScreen>
+    </View>
   );
 }
 
 const makeStyles = (theme: MD3Theme) =>
   StyleSheet.create({
+    root: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
     content: {
       flexGrow: 1,
       paddingBottom: 24,
     },
-    topBar: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingRight: 16,
-      paddingTop: 8,
-    },
-    backButton: {
-      margin: 0,
-    },
-    backSpacer: {
-      width: 16,
+    progressRow: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
     },
     progressTrack: {
-      flex: 1,
       height: 4,
       borderRadius: 2,
-      marginLeft: 4,
       overflow: 'hidden',
       backgroundColor: theme.colors.surfaceVariant,
     },

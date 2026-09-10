@@ -6,31 +6,40 @@ import * as ImagePicker from 'expo-image-picker';
 import { Icon } from '@/components/Icon';
 import { useAppTheme } from '@/theme';
 
-export type PickedPhoto = { uri: string; mimeType: string };
+import type { PhotoItem } from '../schemas/createPostSchema';
 
 type Props = {
-  value: PickedPhoto[];
-  onChange: (photos: PickedPhoto[]) => void;
+  value: PhotoItem[];
+  onChange: (photos: PhotoItem[]) => void;
 };
 
 const SELECTION_LIMIT = 10;
 
-/** Съёмка с камеры / выбор из галереи + превью с удалением. Фото необязательны. */
+const keyOf = (photo: PhotoItem) => (photo.kind === 'new' ? photo.uri : photo.id);
+const uriOf = (photo: PhotoItem) => (photo.kind === 'new' ? photo.uri : photo.url);
+
+/**
+ * Съёмка с камеры / выбор из галереи + превью с удалением. Фото необязательны.
+ * Уже загруженные фото (`kind: 'existing'`) приходят при редактировании и
+ * показываются так же; «удалить» просто выкидывает элемент из массива, а дифф
+ * с сервером считает `updatePostWithMedia`.
+ */
 export function PhotoPicker({ value, onChange }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const [error, setError] = useState<string | null>(null);
 
   const append = (assets: ImagePicker.ImagePickerAsset[]) => {
-    const next = assets.map((asset) => ({
+    const next: PhotoItem[] = assets.map((asset) => ({
+      kind: 'new',
       uri: asset.uri,
       mimeType: asset.mimeType ?? 'image/jpeg',
     }));
     onChange([...value, ...next].slice(0, SELECTION_LIMIT));
   };
 
-  const remove = (uri: string) => {
-    onChange(value.filter((photo) => photo.uri !== uri));
+  const remove = (key: string) => {
+    onChange(value.filter((photo) => keyOf(photo) !== key));
   };
 
   const takePhoto = async () => {
@@ -100,20 +109,23 @@ export function PhotoPicker({ value, onChange }: Props) {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.previews}
         >
-          {value.map((photo) => (
-            <View key={photo.uri} style={styles.thumbWrap}>
-              <Image source={{ uri: photo.uri }} style={styles.thumb} />
-              <Pressable
-                onPress={() => remove(photo.uri)}
-                hitSlop={8}
-                style={styles.removeButton}
-                accessibilityRole="button"
-                accessibilityLabel="Убрать фото"
-              >
-                <Icon name="close" size={16} color={theme.colors.onPrimary} />
-              </Pressable>
-            </View>
-          ))}
+          {value.map((photo) => {
+            const key = keyOf(photo);
+            return (
+              <View key={key} style={styles.thumbWrap}>
+                <Image source={{ uri: uriOf(photo) }} style={styles.thumb} />
+                <Pressable
+                  onPress={() => remove(key)}
+                  hitSlop={8}
+                  style={styles.removeButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Убрать фото"
+                >
+                  <Icon name="close" size={16} color={theme.colors.onPrimary} />
+                </Pressable>
+              </View>
+            );
+          })}
         </ScrollView>
       ) : null}
     </View>

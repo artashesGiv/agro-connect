@@ -1,24 +1,24 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { StyleSheet, View } from 'react-native';
-import { HelperText, type MD3Theme } from 'react-native-paper';
+import { HelperText } from 'react-native-paper';
 
 import { PostCard } from '@/components/PostCard';
 import type { CreatePreviewScreenProps } from '@/navigation/types';
 import { useAuth } from '@/services/auth';
-import { createPostWithMedia } from '@/services/posts';
+import { createPostWithMedia, updatePostWithMedia } from '@/services/posts';
 import { storage, toUserMessage } from '@/services/supabase';
-import { useAppTheme } from '@/theme';
 
 import { CreateStepLayout } from '../../components/CreateStepLayout';
+import { useCreatePostMeta } from '../../forms/CreatePostProvider';
 import type { CreatePostFormValues } from '../../schemas/createPostSchema';
 
 export default function CreatePreviewScreen({
   navigation,
 }: CreatePreviewScreenProps) {
-  const theme = useAppTheme();
-  const styles = useMemo(() => makeStyles(theme), [theme]);
   const { user, profile } = useAuth();
+  const { postId } = useCreatePostMeta();
+  const isEdit = postId !== null;
   const { handleSubmit, formState, reset, getValues } =
     useFormContext<CreatePostFormValues>();
   const [error, setError] = useState<string | null>(null);
@@ -30,18 +30,35 @@ export default function CreatePreviewScreen({
     ? storage.getAvatarUrl(profile.avatar_path)
     : undefined;
 
-  const publish = handleSubmit(async (data) => {
+  const submit = handleSubmit(async (data) => {
     if (!user) {
       setError('Сессия не найдена. Войдите заново.');
       return;
     }
     setError(null);
+    const input = {
+      postTypeCode: data.postTypeCode,
+      title: data.title,
+      body: data.body,
+    };
+    const newPhotos = data.photos
+      .filter((photo) => photo.kind === 'new')
+      .map((photo) => ({ uri: photo.uri, mimeType: photo.mimeType }));
+
     try {
-      await createPostWithMedia(
-        user.id,
-        { postTypeCode: data.postTypeCode, title: data.title, body: data.body },
-        data.photos,
-      );
+      if (isEdit) {
+        await updatePostWithMedia(postId, user.id, input, {
+          newPhotos,
+          keepMediaIds: data.photos
+            .filter((photo) => photo.kind === 'existing')
+            .map((photo) => photo.id),
+        });
+        // Родитель мастера — стек профиля; закрываем экран EditPost.
+        navigation.getParent()?.goBack();
+        return;
+      }
+
+      await createPostWithMedia(user.id, input, newPhotos);
       reset();
       // Родитель мастера — таб-навигатор; уводим на «Профиль», где виден пост.
       navigation.getParent()?.navigate('Profile' as never);
@@ -54,11 +71,11 @@ export default function CreatePreviewScreen({
   return (
     <CreateStepLayout
       step={5}
-      title="Проверьте пост"
+      title={isEdit ? 'Проверьте изменения' : 'Проверьте пост'}
       subtitle="Так он будет выглядеть в ленте."
       onBack={navigation.goBack}
-      onNext={publish}
-      nextLabel="Опубликовать"
+      onNext={submit}
+      nextLabel={isEdit ? 'Сохранить' : 'Опубликовать'}
       nextLoading={formState.isSubmitting}
     >
       <View style={styles.previewWrap}>
@@ -66,7 +83,9 @@ export default function CreatePreviewScreen({
           author={{ nickname: profile?.name ?? 'вы', avatarUrl }}
           title={values.title}
           description={values.body || undefined}
-          images={values.photos.map((photo) => photo.uri)}
+          images={values.photos.map((photo) =>
+            photo.kind === 'new' ? photo.uri : photo.url,
+          )}
         />
       </View>
       {error ? (
@@ -78,12 +97,11 @@ export default function CreatePreviewScreen({
   );
 }
 
-const makeStyles = (theme: MD3Theme) =>
-  StyleSheet.create({
-    previewWrap: {
-      marginHorizontal: -24,
-    },
-    error: {
-      paddingHorizontal: 0,
-    },
-  });
+const styles = StyleSheet.create({
+  previewWrap: {
+    marginHorizontal: -24,
+  },
+  error: {
+    paddingHorizontal: 0,
+  },
+});

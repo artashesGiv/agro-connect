@@ -1,3 +1,4 @@
+import { NavigatorScreenParams } from '@react-navigation/native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -6,7 +7,7 @@ export type RootTabParamList = {
   Map: undefined;
   Create: undefined;
   Placeholder: undefined;
-  Profile: undefined;
+  Profile: NavigatorScreenParams<ProfileStackParamList> | undefined;
 };
 
 export type HomeScreenProps = BottomTabScreenProps<RootTabParamList, 'Home'>;
@@ -17,6 +18,25 @@ export type PlaceholderScreenProps = BottomTabScreenProps<
   'Placeholder'
 >;
 export type ProfileScreenProps = BottomTabScreenProps<RootTabParamList, 'Profile'>;
+
+export type ProfileStackParamList = {
+  ProfileMain: undefined;
+  PostDetail: { postId: string };
+  EditPost: { postId: string };
+};
+
+export type ProfileMainScreenProps = NativeStackScreenProps<
+  ProfileStackParamList,
+  'ProfileMain'
+>;
+export type PostDetailScreenProps = NativeStackScreenProps<
+  ProfileStackParamList,
+  'PostDetail'
+>;
+export type EditPostScreenProps = NativeStackScreenProps<
+  ProfileStackParamList,
+  'EditPost'
+>;
 
 export type AuthStackParamList = {
   Login: undefined;

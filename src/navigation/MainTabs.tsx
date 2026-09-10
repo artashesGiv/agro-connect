@@ -5,8 +5,8 @@ import CreateScreen from '../features/create/screens/CreateScreen';
 import HomeScreen from '../features/home/screens/HomeScreen';
 import MapScreen from '../features/map/screens/MapScreen';
 import PlaceholderScreen from '../features/placeholder/screens/PlaceholderScreen';
-import ProfileScreen from '../features/profile/screens/ProfileScreen';
 import { CreateTabButton } from './CreateTabButton';
+import { ProfileNavigator } from './ProfileNavigator';
 import type { RootTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -45,7 +45,7 @@ export function MainTabs() {
       <Tab.Screen
         name="Map"
         component={MapScreen}
-        options={{ title: 'Карта', headerShown: true }}
+        options={{ title: 'Карта', headerShown: false }}
       />
       <Tab.Screen
         name="Create"
@@ -59,11 +59,11 @@ export function MainTabs() {
       <Tab.Screen
         name="Placeholder"
         component={PlaceholderScreen}
-        options={{ title: '?', headerShown: true }}
+        options={{ title: '?', headerShown: false }}
       />
       <Tab.Screen
         name="Profile"
-        component={ProfileScreen}
+        component={ProfileNavigator}
         options={{ title: 'Профиль', headerShown: false }}
       />
     </Tab.Navigator>

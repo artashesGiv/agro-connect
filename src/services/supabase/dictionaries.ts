@@ -41,6 +41,20 @@ export async function getReactionTypes(): Promise<ReactionType[]> {
   return data;
 }
 
+let activeReactionTypesCache: ReactionType[] | null = null;
+
+/**
+ * Активные типы реакций в порядке справочника. Кэш на сессию — справочник
+ * практически неизменен, а сводка реакций строится на каждый рендер ленты.
+ * `getReactionTypes` сам `is_active` не фильтрует, поэтому фильтруем здесь.
+ */
+export async function getActiveReactionTypes(): Promise<ReactionType[]> {
+  if (!activeReactionTypesCache) {
+    activeReactionTypesCache = (await getReactionTypes()).filter((t) => t.is_active);
+  }
+  return activeReactionTypesCache;
+}
+
 /** TODO(backend): таблица `crops` пока пустая — список вернётся пустым. */
 export async function getCrops(): Promise<Pick<Crop, 'id' | 'slug' | 'name'>[]> {
   const { data, error } = await supabase

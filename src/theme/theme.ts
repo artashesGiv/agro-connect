@@ -45,7 +45,33 @@ export const appTheme: MD3Theme = {
     outlineVariant: brand.border,
     error: brand.danger,
     errorContainer: brand.danger,
+    onError: brand.onDanger,
     onErrorContainer: brand.onDanger,
+
+    // Нейтрализуем дефолтные фиолетовые роли MD3, которые не покрыты `brand`:
+    // без этого Menu / Dialog / SegmentedButtons уезжают в лаванду.
+    elevation: {
+      level0: 'transparent',
+      level1: brand.surface,
+      level2: brand.surface, // фон Menu
+      level3: brand.surface, // фон Dialog
+      level4: brand.surface,
+      level5: brand.surface,
+    },
+    secondary: brand.primary,
+    onSecondary: brand.onPrimary,
+    secondaryContainer: brand.accentSoft, // выбранный сегмент SegmentedButtons
+    onSecondaryContainer: brand.onAccentSoft,
+    tertiary: brand.primary,
+    onTertiary: brand.onPrimary,
+    tertiaryContainer: brand.accentSoft,
+    onTertiaryContainer: brand.onAccentSoft,
+    backdrop: 'rgba(59, 46, 26, 0.45)', // тёплый коричневый скрим (brand.text @ 45%)
+    surfaceDisabled: 'rgba(59, 46, 26, 0.12)',
+    onSurfaceDisabled: 'rgba(59, 46, 26, 0.38)',
+    inverseSurface: brand.text,
+    inverseOnSurface: brand.background,
+    inversePrimary: brand.accentSoft,
   },
 };
 

@@ -7,6 +7,7 @@ import type { CreateTitleScreenProps } from '@/navigation/types';
 
 import { CreateStepLayout } from '../../components/CreateStepLayout';
 import { PostTypeToggle } from '../../components/PostTypeToggle';
+import { useCreatePostMeta } from '../../forms/CreatePostProvider';
 import {
   CREATE_STEP_FIELDS,
   type CreatePostFormValues,
@@ -14,6 +15,7 @@ import {
 
 export default function CreateTitleScreen({ navigation }: CreateTitleScreenProps) {
   const { control, trigger, setValue } = useFormContext<CreatePostFormValues>();
+  const { postId } = useCreatePostMeta();
   const postTypeCode = useWatch({ control, name: 'postTypeCode' });
 
   const handleNext = async () => {
@@ -22,7 +24,13 @@ export default function CreateTitleScreen({ navigation }: CreateTitleScreenProps
   };
 
   return (
-    <CreateStepLayout step={1} title="Заголовок или вопрос" onNext={handleNext}>
+    <CreateStepLayout
+      step={1}
+      title="Заголовок или вопрос"
+      onNext={handleNext}
+      // В режиме редактирования шаг 1 — не корень: «назад» закрывает мастер.
+      onBack={postId ? navigation.goBack : undefined}
+    >
       <View style={styles.toggle}>
         <Text variant="labelLarge" style={styles.label}>
           Выберите тип

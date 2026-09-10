@@ -3,7 +3,9 @@ export {
   getPost,
   createPost,
   deletePost,
+  updatePost,
   createPostWithMedia,
+  updatePostWithMedia,
 } from './postsRepository';
 export type {
   FeedPost,
@@ -11,4 +13,5 @@ export type {
   NewPost,
   NewPostPhoto,
   CreatePostInput,
+  UpdatePostMedia,
 } from './postsRepository';

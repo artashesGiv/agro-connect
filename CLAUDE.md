@@ -25,8 +25,10 @@ Single-package Expo app. The backend is **Supabase** (hosted Postgres + Auth + S
 - **`App.tsx`** is tiny: provider tree only — `SafeAreaProvider` → `PaperProvider theme={appTheme}` → `AuthProvider` → `RootNavigator`. All navigator wiring lives in `src/navigation/`.
 - **`src/navigation/`** — the composition root for navigation:
   - `RootNavigator.tsx` — the auth gate. `status === 'loading'` → blank background view (native splash still up); else `<NavigationContainer theme={navigationTheme}>` + `<StatusBar style="light">` wrapping either `<MainTabs>` (`authenticated`) or `<AuthNavigator>` (everything else, **including `registering`** — during sign-up a session exists before the profile is written, and the user must not reach the tabs yet). Whole navigator is swapped, never `navigate()`.
-  - `MainTabs.tsx` — the 5-tab bottom navigator: `Home`, `Map`, `Create`, `Placeholder` (`?`, temporary), `Profile`. Icons for all but `Create` come from `TAB_ICONS`; `Create` uses a custom `tabBarButton` (`CreateTabButton.tsx` — a big round `+`). Colors come from `navigationTheme` automatically. `Home` and `Profile` have real content; `Profile` runs `headerShown: false` and draws its own `Appbar.Header` (`ProfileHeader`). Map / Create / `?` are placeholders.
-  - `types.ts` — `RootTabParamList` + `AuthStackParamList` and per-screen prop aliases. Add new routes HERE first.
+  - `MainTabs.tsx` — the 5-tab bottom navigator: `Home`, `Map`, `Create`, `Placeholder` (`?`, temporary), `Profile`. Icons for all but `Create` come from `TAB_ICONS`; `Create` uses a custom `tabBarButton` (`CreateTabButton.tsx` — a big round `+`). Colors come from `navigationTheme` automatically. `Home` and `Profile` have real content; Map / Create / `?` are placeholders.
+  - `ProfileNavigator.tsx` — the `Profile` tab is a nested native-stack (`ProfileMain` / `PostDetail {postId}` / `EditPost {postId}`), `headerShown: false` for all. `PostDetail`/`EditPost` screens live in `features/post-detail` / `features/create`; the navigator imports them because `src/navigation/` is the composition root.
+  - **`src/components/AppHeader.tsx`** — the single top-bar component (Paper `Appbar.Header`, flat, left title, hairline bottom). **Native navigation headers are off everywhere** (`headerShown: false` on every tab and stack screen); each screen renders `<AppHeader title onBack leading actions />` itself. Used by `ProfileHeader`, `MapScreen`/`PlaceholderScreen`, `PostDetailScreen`, and `CreateStepLayout`. `RegisterStepLayout` still has its own thin bar (auth flow, not yet migrated).
+  - `types.ts` — `RootTabParamList` (+ `ProfileStackParamList`), `AuthStackParamList` and per-screen prop aliases. Add new routes HERE first.
 - **`app.config.js`** — dynamic Expo config (replaces the old `app.json`). Portrait-locked, `userInterfaceStyle: 'light'`, `plugins: ['expo-image-picker']` (camera + photo-library permission strings), Android package `com.a1.contestapp` (placeholder — replace before final submission), EAS `projectId` in `extra.eas`.
 - **`eas.json`** — `preview` (internal-distribution APK) and `production` (app-bundle) profiles only.
 - **`tsconfig.json`** — `strict`, plus `paths: { "@/*": ["./src/*"] }`. No `baseUrl` (deprecated in TS 6) and no babel/metro config: Expo SDK 57 enables `experiments.tsconfigPaths` by default and resolves `paths` relative to the config's own directory.
@@ -44,15 +46,15 @@ Single-package Expo app. The backend is **Supabase** (hosted Postgres + Auth + S
 
 Android draws the app **edge-to-edge** (RN 0.81+), so content runs under the status bar and under the system navigation bar. Nothing is inset for free.
 
-- What already handles itself: the bottom tab bar and every `headerShown: true` screen — `BottomTabView` and the navigation `Header` apply insets internally. Map / Create / `?` need no wrapper. `Profile` runs `headerShown: false` but its `Appbar.Header` (from `react-native-safe-area-context`) applies the top inset itself.
-- What must wrap itself: any screen with no header and no `Appbar`. `Home` (`headerShown: false`) and the whole auth stack (`headerShown: false`).
+- What already handles itself: the bottom tab bar (`BottomTabView` applies the bottom inset) and any screen that renders `AppHeader` — Paper's `Appbar.Header` applies the top inset itself. So Profile / Map / `?` / PostDetail / the create wizard need no top wrapper.
+- What must wrap itself: any screen with no `AppHeader`. `Home` (`headerShown: false`) and the whole auth stack (`headerShown: false`).
 - **`src/components/Screen.tsx`** — `SafeAreaView` + themed background, `edges` defaults to `['top']` (inside tabs the bar covers the bottom). Use it for plain screens.
 - **`src/components/KeyboardAwareScreen.tsx`** — the form variant: safe area (`['top','bottom']` by default) + `ScrollView` that pulls the focused field into the **centre of the visible area** instead of leaving it at the edge of the keyboard.
   - `FormTextInput` reports its wrapper via `useFieldFocus()` on focus; the container measures with `measureInWindow` and scrolls by the difference. Geometry is in screen coordinates on purpose, so the same math holds whether the window is resized by `adjustResize` or merely covered by the keyboard under edge-to-edge — the visible bottom is `min(scrollView bottom, keyboard top)`.
   - The viewport is re-measured on every focus rather than trusted from `onLayout`, because a screen can arrive via a stack transition.
   - A spacer at the end of the content grows while the keyboard is up; without it the last field hits the end of the content and can never reach the centre.
   - Hand-rolled on purpose: `KeyboardAvoidingView` only shrinks the container (field ends up flush against the keyboard), and `react-native-keyboard-controller` is a native module absent from Expo Go, which is how this app is debugged.
-- A new screen without a header **must** use one of these two wrappers (or draw its own `Appbar.Header`, like the Profile tab). A new form field must go through `FormTextInput`, or it will not be centred.
+- A new screen **must** render `<AppHeader>` at the top, or use `Screen` / `KeyboardAwareScreen` if it deliberately has no header. A new form field must go through `FormTextInput`, or it will not be centred.
 
 ### Icons
 
@@ -74,6 +76,7 @@ Android draws the app **edge-to-edge** (RN 0.81+), so content runs under the sta
 - **Screen wiring:** `useForm<Values>({ resolver: zodResolver(schema), defaultValues, mode: 'onTouched' })`, submit via `handleSubmit(values => signIn(values))`. Field errors render under the fields; a server/auth error comes from `useAuth().error` shown above the form (it self-clears on the next submit).
 - **Multi-step form (Register):** one `useForm` for the whole wizard in `src/features/auth/forms/RegisterFormProvider.tsx` (RHF `FormProvider`); each step screen pulls it via `useFormContext<RegisterFormValues>()`. A step validates only its own fields with `await trigger(REGISTER_STEP_FIELDS.<step>)` before `navigation.navigate(...)`. `RegisterStepLayout` is the shared step shell (back + progress bar + title + footer button). The steps are screens of a nested native-stack (`RegisterNavigator`), so `navigation.goBack()` moves between steps and, on step 1, bubbles up to `Login`.
 - Only the last step touches the network (`useAuth().signUp`); steps 1-2 are pure local validation. The step-2 fields (`name`, `specialization`, `region`) mirror the `profiles` columns exactly — the schema has no first/last-name or nickname column, so do not reintroduce them in the form.
+- **Create/Edit post wizard** (`src/features/create/`) — same `FormProvider` shape. `CreatePostProvider` takes optional `initialValues` + `postId`; `useCreatePostMeta()` exposes `{ postId }` and the last step branches `createPostWithMedia` vs `updatePostWithMedia` on it, relabelling the button. `EditPostScreen` fetches the post, builds `initialValues`, and renders the same `CreateNavigator`. `photos` is a zod discriminated union: `{ kind: 'new', uri, mimeType }` (freshly picked) and `{ kind: 'existing', id, storagePath, url, mediaType }` (already in `post_media`, shown by signed URL) — `PhotoPicker` renders both, and edit-submit diffs the two to add/remove media.
 
 ### Backend — Supabase
 
@@ -107,9 +110,11 @@ The whole backend is one hosted Supabase project (`api-docs/` holds the schema d
 Screens never touch `supabase` directly — they go through a feature `repository/` (and usually a thin hook next to it).
 
 - `features/map/repository/fieldsRepository.ts` + `hooks/useFields.ts` — CRUD over `fields`. The domain type is `{ latitude, longitude }`; writes serialize to WKT `POINT(lon lat)` (**longitude first**). Reads deliberately do **not** select `center` / `boundary`: PostgREST returns PostGIS columns as hex EWKB, which is why the generated types say `unknown`. **TODO(backend):** a view/RPC with `st_asgeojson` is needed before the map can draw anything.
-- `src/services/posts/postsRepository.ts` (+ `features/home/hooks/useFeed.ts`) — the feed: one select with all joins (author profile, crop, type, stage, status, media) instead of N follow-up queries. Filtering on an embedded table needs `!inner`, otherwise PostgREST nulls the embedded object instead of dropping the parent row — hence `feedSelect(innerPostType)`. Lives in `services` (not the home feature) because the profile tab reuses it via `getFeed({ authorId })`; the profile hook is `features/profile/hooks/useUserPosts.ts`, which also signs `post-media` URLs for display.
+- `src/services/posts/postsRepository.ts` (+ `features/home/hooks/useFeed.ts`) — the feed: one select with all joins (author profile, crop, type, stage, status, media, plus raw `post_reactions` rows and an `answers(count)` aggregate) instead of N follow-up queries. Filtering on an embedded table needs `!inner`, otherwise PostgREST nulls the embedded object instead of dropping the parent row — hence `feedSelect(innerPostType)`. Lives in `services` (not the home feature) because the profile tab reuses it via `getFeed({ authorId })`; the profile hook is `features/profile/hooks/useUserPosts.ts`, which also signs `post-media` URLs and folds reaction rows into per-type summaries. `updatePost` / `updatePostWithMedia` (partial PATCH + `post_media` diff, incl. Storage file removal) power the edit wizard.
+- `src/services/reactions/` — `setPostReaction` (exclusive: `previous → next` is delete+insert) + `summarizeReactions` / `toggleReactionSummary` pure helpers. Shared because both the profile feed and `PostDetail` react; the toggle hook is `src/hooks/useReactions.ts`, optimistic update + rollback done by the screen. `ReactionSummary` lives in `src/types/reactions.ts` so `src/components/ReactionControl` can import it without reaching into services.
+- `features/post-detail/` — the `PostDetail` screen (in the Profile stack) + `repository/commentsRepository.ts` (`answers` CRUD, `answer_votes`) + `hooks/useComments.ts` (list/add/edit/remove + optimistic `vote`). Not in `services` because only this feature needs comments.
 - The hooks are intentionally hand-rolled (`loading` / `error` / `reload`, no cache). When caching actually becomes a problem, react-query slots in behind the same hook signature and no screen changes.
-- Not wrapped yet, by design: `post_reactions`, `answers`, `answer_votes` — trivial insert/delete that should be written against the screen that needs them.
+- Still unwrapped, by design: accepted-answer (no backend flag), bookmarks.
 
 
 ### Folder layout — where code goes
@@ -122,8 +127,11 @@ src/
 │   ├── home/               # the one real tab (demo counter) + the feed hook (hooks/useFeed.ts);
 │   │                       #   the posts repository itself lives in src/services/posts (profile reuses it)
 │   ├── create/             # "+" tab — 5-step create-post wizard, same shape as the register wizard:
-│   │                       #   schemas/ (zod), forms/CreatePostProvider.tsx, navigation/CreateNavigator.tsx,
-│   │                       #   components/ (CreateStepLayout, PostTypeToggle, PhotoPicker), screens/create/*
+│   │                       #   schemas/ (zod), forms/CreatePostProvider.tsx (initialValues + postId → edit mode),
+│   │                       #   navigation/CreateNavigator.tsx, components/ (CreateStepLayout, PostTypeToggle,
+│   │                       #   PhotoPicker), screens/create/*, screens/EditPostScreen.tsx (reuses the wizard)
+│   ├── post-detail/        # PostDetail screen (Profile stack) — comments + reactions + votes:
+│   │                       #   repository/commentsRepository.ts, hooks/useComments.ts, components/ (CommentItem, CommentComposer)
 │   ├── placeholder/  profile/   # placeholder/ is a stub tab; profile is built out (see Project status)
 │   ├── auth/               # auth UI: screens/ (+ screens/register/ wizard), navigation/ (Auth + nested Register),
 │   │                       #   schemas/ (zod), forms/RegisterFormProvider.tsx, components/ (RegisterStepLayout)
@@ -158,4 +166,18 @@ New screen → `src/features/<feature>/screens/`, and register the route in `src
 
 ### Project status
 
-This is a **contest-app boilerplate**, not a finished product. Despite the `agro-connect` repo name, the app is an auth flow (real Login form + 3-step Register wizard, both against Supabase) in front of a 5-tab shell. Home is a demo counter; Map / Create / `?` are placeholders. **Profile** is the one built-out feature: `Appbar.Header` (bell / `@name` / gear — gear currently does `signOut`), a `ProfileInfo` card off the real `profiles` row, and a "Мои посты / Закладки" switch whose posts tab renders the real feed filtered by author. The `fields` repository is still unused; the feed repository is now exercised through the profile tab. `SPEC.md` still has open questions about the actual app idea. A prior commit added a full `src/map/` agricultural-field feature (map view, weather tile overlay, AsyncStorage field repository, mocked other-users' markers) that was **reverted** — check `git show 7a5c58a` if that direction is revived (its data-access layer maps onto `src/features/map/repository/`). Read and update `SPEC.md` before building real features.
+This is a **contest-app boilerplate**, not a finished product. Despite the `agro-connect` repo name, the app is an auth flow (real Login form + 3-step Register wizard, both against Supabase) in front of a 5-tab shell. Home is a demo counter; Map / `?` are placeholders. **Create** is the 5-step post wizard (also reused for editing). **Profile** is the most built-out feature: `Appbar.Header` (bell / `@name` / gear — gear currently does `signOut`), a `ProfileInfo` card off the real `profiles` row, and a "Мои посты / Закладки" switch whose posts tab renders the real feed filtered by author — with working reactions, comment counts, an overflow menu wired to **edit** (`EditPost`) and **delete**, and a tap-through to **`PostDetail`** (comments + votes + reactions). Bookmarks are still a stub. The `fields` repository is still unused. `SPEC.md` still has open questions about the actual app idea. A prior commit added a full `src/map/` agricultural-field feature (map view, weather tile overlay, AsyncStorage field repository, mocked other-users' markers) that was **reverted** — check `git show 7a5c58a` if that direction is revived (its data-access layer maps onto `src/features/map/repository/`). Read and update `SPEC.md` before building real features.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for `artashesGiv/agro-connect` (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context (one `CONTEXT.md` + `docs/adr/` at the repo root). See `docs/agents/domain.md`.

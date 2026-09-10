@@ -48,6 +48,13 @@ const feedSelect = (innerPostType: boolean) => `
     media_type,
     storage_path,
     sort_order
+  ),
+  post_reactions (
+    reaction_type_id,
+    user_id
+  ),
+  answers (
+    count
   )
 `;
 
@@ -75,6 +82,10 @@ export type FeedPost = {
     storage_path: string;
     sort_order: number;
   }[];
+  /** Сырые строки реакций — сводку по типам строит слой reactions. */
+  post_reactions: { reaction_type_id: number; user_id: string }[];
+  /** PostgREST отдаёт агрегат вложенной таблицы как `[{ count }]`. */
+  answers: { count: number }[];
 };
 
 export type FeedFilter = {
@@ -134,6 +145,104 @@ export async function createPost(authorId: string, post: NewPost) {
 export async function deletePost(id: string): Promise<void> {
   const { error } = await supabase.from('posts').delete().eq('id', id);
   if (error) throw error;
+}
+
+/**
+ * Частичный апдейт поста (RLS: только владелец). `updated_at` бампаем явно —
+ * триггера на бэке для этого нет.
+ */
+export async function updatePost(
+  id: string,
+  patch: { title?: string | null; body?: string | null; postTypeId?: number },
+) {
+  const { data, error } = await supabase
+    .from('posts')
+    .update({
+      ...(patch.title !== undefined ? { title: patch.title } : {}),
+      ...(patch.body !== undefined ? { body: patch.body } : {}),
+      ...(patch.postTypeId !== undefined ? { post_type_id: patch.postTypeId } : {}),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export type UpdatePostMedia = {
+  /** Новые локальные фото для загрузки. */
+  newPhotos: NewPostPhoto[];
+  /** id строк `post_media`, которые нужно оставить; остальные — удалить. */
+  keepMediaIds: string[];
+};
+
+/**
+ * Редактирование поста вместе с медиа. Не атомарно: сначала апдейт полей, затем
+ * дифф медиа (удаляем лишние строки `post_media` и файлы в Storage, грузим
+ * новые). При ошибке экран показывает текст и перечитывает пост с сервера.
+ */
+export async function updatePostWithMedia(
+  postId: string,
+  userId: string,
+  input: CreatePostInput,
+  media: UpdatePostMedia,
+): Promise<void> {
+  const types = await dictionaries.getPostTypes();
+  const type = types.find((t) => t.code === input.postTypeCode);
+  if (!type) throw new Error('Неизвестный тип поста');
+
+  await updatePost(postId, {
+    title: input.title?.trim() || null,
+    body: input.body?.trim() || null,
+    postTypeId: type.id,
+  });
+
+  const { data: current, error: readError } = await supabase
+    .from('post_media')
+    .select('id, storage_path, sort_order')
+    .eq('post_id', postId)
+    .order('sort_order', { ascending: true });
+  if (readError) throw readError;
+  const rowsNow = current ?? [];
+
+  const keep = new Set(media.keepMediaIds);
+  const toRemove = rowsNow.filter((row) => !keep.has(row.id));
+  if (toRemove.length > 0) {
+    const { error: delError } = await supabase
+      .from('post_media')
+      .delete()
+      .in(
+        'id',
+        toRemove.map((row) => row.id),
+      );
+    if (delError) throw delError;
+    await supabase.storage
+      .from(storage.POST_MEDIA_BUCKET)
+      .remove(toRemove.map((row) => row.storage_path));
+  }
+
+  if (media.newPhotos.length > 0) {
+    const baseOrder =
+      rowsNow.reduce((max, row) => Math.max(max, row.sort_order), -1) + 1;
+    const rows: TablesInsert<'post_media'>[] = [];
+    for (let i = 0; i < media.newPhotos.length; i += 1) {
+      const contentType = resolvePostMediaMime(media.newPhotos[i].mimeType);
+      const storagePath = await storage.uploadPostMedia(
+        userId,
+        media.newPhotos[i].uri,
+        contentType,
+      );
+      rows.push({
+        post_id: postId,
+        media_type: contentType.startsWith('video') ? 'video' : 'image',
+        storage_path: storagePath,
+        sort_order: baseOrder + i,
+      });
+    }
+    const { error: insError } = await supabase.from('post_media').insert(rows);
+    if (insError) throw insError;
+  }
 }
 
 export type NewPostPhoto = { uri: string; mimeType: string };
