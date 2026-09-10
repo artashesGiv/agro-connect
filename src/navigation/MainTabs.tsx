@@ -45,7 +45,16 @@ export function MainTabs() {
       <Tab.Screen
         name="Map"
         component={MapScreen}
-        options={{ title: 'Карта', headerShown: false }}
+        options={{
+          title: 'Карта',
+          // Хедер рисует сам экран (общий `AppHeader`), нативный выключен.
+          headerShown: false,
+          // Единственная вкладка с `lazy: false`: WebView с картой поднимается
+          // секунду-другую, и делать это в момент перехода значит показывать
+          // спиннер каждый раз. Геолокацию и загрузку полей это не трогает —
+          // они висят на `useFocusEffect`.
+          lazy: false,
+        }}
       />
       <Tab.Screen
         name="Create"

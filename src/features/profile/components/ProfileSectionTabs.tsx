@@ -5,7 +5,7 @@ import type { MD3Theme } from 'react-native-paper';
 import { Icon, type IconName } from '@/components/Icon';
 import { useAppTheme } from '@/theme';
 
-export type ProfileSection = 'posts' | 'bookmarks';
+export type ProfileSection = 'posts' | 'bookmarks' | 'fields';
 
 type Props = {
   value: ProfileSection;
@@ -15,9 +15,10 @@ type Props = {
 const TABS: { key: ProfileSection; icon: IconName; label: string }[] = [
   { key: 'posts', icon: 'view-grid-outline', label: 'Мои посты' },
   { key: 'bookmarks', icon: 'bookmark-outline', label: 'Закладки' },
+  { key: 'fields', icon: 'vector-polygon', label: 'Мои поля' },
 ];
 
-/** Плоский переключатель двух секций профиля — только иконки, без подписей. */
+/** Плоский переключатель секций профиля — только иконки, без подписей. */
 export function ProfileSectionTabs({ value, onChange }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);

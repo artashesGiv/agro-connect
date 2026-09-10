@@ -23,7 +23,8 @@ There is no test runner, linter, or formatter configured. "Tests" in `SPEC.md` m
 Single-package Expo app. The backend is **Supabase** (hosted Postgres + Auth + Storage) — there is no server of our own. Entry: `index.ts` → `App.tsx`.
 
 - **`App.tsx`** is tiny: provider tree only — `SafeAreaProvider` → `PaperProvider theme={appTheme}` → `AuthProvider` → `RootNavigator`. All navigator wiring lives in `src/navigation/`.
-- **`src/navigation/`** — the composition root for navigation:
+- **`src/navigation/`** — the composition root for navigation. `RootTabParamList.Map` carries `{ focusFieldId?, openCard? }`: the profile tab uses them to send the map to a field, and the map clears them with `setParams` once it has acted, or every return to the tab would replay the flight.
+
   - `RootNavigator.tsx` — the auth gate. `status === 'loading'` → blank background view (native splash still up); else `<NavigationContainer theme={navigationTheme}>` + `<StatusBar style="light">` wrapping either `<MainTabs>` (`authenticated`) or `<AuthNavigator>` (everything else, **including `registering`** — during sign-up a session exists before the profile is written, and the user must not reach the tabs yet). Whole navigator is swapped, never `navigate()`.
   - `MainTabs.tsx` — the 5-tab bottom navigator: `Home`, `Map`, `Create`, `Placeholder` (`?`, temporary), `Profile`. Icons for all but `Create` come from `TAB_ICONS`; `Create` uses a custom `tabBarButton` (`CreateTabButton.tsx` — a big round `+`). Colors come from `navigationTheme` automatically. `Home` and `Profile` have real content; Map / Create / `?` are placeholders.
   - `ProfileNavigator.tsx` — the `Profile` tab is a nested native-stack (`ProfileMain` / `PostDetail {postId}` / `EditPost {postId}`), `headerShown: false` for all. `PostDetail`/`EditPost` screens live in `features/post-detail` / `features/create`; the navigator imports them because `src/navigation/` is the composition root.
@@ -109,7 +110,11 @@ The whole backend is one hosted Supabase project (`api-docs/` holds the schema d
 
 Screens never touch `supabase` directly — they go through a feature `repository/` (and usually a thin hook next to it).
 
-- `features/map/repository/fieldsRepository.ts` + `hooks/useFields.ts` — CRUD over `fields`. The domain type is `{ latitude, longitude }`; writes serialize to WKT `POINT(lon lat)` (**longitude first**). Reads deliberately do **not** select `center` / `boundary`: PostgREST returns PostGIS columns as hex EWKB, which is why the generated types say `unknown`. **TODO(backend):** a view/RPC with `st_asgeojson` is needed before the map can draw anything.
+- `services/fields/fieldsApi.ts` + `hooks/useFields.ts` — the user's own `fields`. It sits in `services/` rather than the map feature (and the hook in shared `hooks/`) because the profile tab lists the same fields, and a feature must not import from another feature. The domain type is `{ latitude, longitude }`, and PostGIS wants **longitude first** everywhere.
+  - **Writes go out as EWKT** (`SRID=4326;POINT(lon lat)`, `SRID=4326;POLYGON((...))`). Bare WKT would arrive as SRID 0 and be rejected by a `geometry(...,4326)` column. `owner_id` is set by the client — the server does not fill it, and RLS demands `owner_id = auth.uid()`.
+  - **Reads use `.geojson()`** (`Accept: application/geo+json`), so PostgREST calls `st_asgeojson` itself and the hex-EWKB problem is gone — no backend view was needed after all. Two requests, one per geometry column: PostgREST's behaviour when a select carries *two* geometry columns is undocumented. The response is parsed defensively because `.geojson()` is typed as `Record<string, unknown>`.
+  - `boundary` is the outer ring only; holes are dropped on read and never produced on write.
+- `src/services/fields/fieldsApi.ts` + `src/hooks/useFields.ts` — CRUD over `fields` for the map. Domain type `{ latitude, longitude }`; see the geometry subsection above (EWKT writes, `.geojson()` reads). The old `features/map/repository/fieldsRepository.ts` + `features/map/hooks/useFields.ts` were removed when this moved up.
 - `src/services/posts/postsRepository.ts` (+ `features/home/hooks/useFeed.ts`) — the feed: one select with all joins (author profile, crop, type, stage, status, media, plus raw `post_reactions` rows and an `answers(count)` aggregate) instead of N follow-up queries. Filtering on an embedded table needs `!inner`, otherwise PostgREST nulls the embedded object instead of dropping the parent row — hence `feedSelect(innerPostType)`. Lives in `services` (not the home feature) because the profile tab reuses it via `getFeed({ authorId })`; the profile hook is `features/profile/hooks/useUserPosts.ts`, which also signs `post-media` URLs and folds reaction rows into per-type summaries. `updatePost` / `updatePostWithMedia` (partial PATCH + `post_media` diff, incl. Storage file removal) power the edit wizard.
 - `src/services/reactions/` — `setPostReaction` (exclusive: `previous → next` is delete+insert) + `summarizeReactions` / `toggleReactionSummary` pure helpers. Shared because both the profile feed and `PostDetail` react; the toggle hook is `src/hooks/useReactions.ts`, optimistic update + rollback done by the screen. `ReactionSummary` lives in `src/types/reactions.ts` so `src/components/ReactionControl` can import it without reaching into services.
 - `features/post-detail/` — the `PostDetail` screen (in the Profile stack) + `repository/commentsRepository.ts` (`answers` CRUD, `answer_votes`) + `hooks/useComments.ts` (list/add/edit/remove + optimistic `vote`). Not in `services` because only this feature needs comments.
@@ -134,21 +139,21 @@ src/
 │   │                       #   repository/commentsRepository.ts, hooks/useComments.ts, components/ (CommentItem, CommentComposer)
 │   ├── placeholder/  profile/   # placeholder/ is a stub tab; profile is built out (see Project status)
 │   ├── auth/               # auth UI: screens/ (+ screens/register/ wizard), navigation/ (Auth + nested Register),
-│   │                       #   schemas/ (zod), forms/RegisterFormProvider.tsx, components/ (RegisterStepLayout)
+│   │                       #   schemas/ (zod), forms/RegisterFormProvider.tsx, components/RegisterStepLayout.tsx
 │   │                       #   (session logic lives in src/services/auth — see "Auth — the session")
-│   └── map/                # the "Карта" tab (placeholder screen) + reference feature template:
-│       ├── components/     #   UI used only by this feature
-│       ├── hooks/          #   hooks used only by this feature (useFields)
-│       ├── repository/     #   data access for this feature — the only place that talks to Supabase
+│   └── map/                # the "Карта" tab — 2GIS map + the user's own fields:
+│       ├── components/     #   MapGLView (WebView), mapHtml.ts (page + bridge), FieldFormDialog, FieldCardDialog
+│       ├── hooks/          #   useCurrentLocation (fields data lives in services/fields)
+│       ├── schemas/        #   zod schema for the new-field form
 │       └── screens/        #   the feature's screens
-├── components/             # shared "dumb" UI reused across features — Icon.tsx; add Button, Card, ...
-├── hooks/                  # (empty) shared hooks — useDebounce, useKeyboardVisible, ...
+├── components/             # shared "dumb" UI reused across features — Icon.tsx, FormTextInput.tsx, Screen.tsx, ...
+├── hooks/                  # shared hooks — useFields (map + profile both list them), ...
 ├── utils/                  # (empty) pure functions, formatters, constants
 ├── services/               # app-wide singletons:
 │   ├── supabase/           #   client + errors + dictionaries + storage
 │   ├── auth/               #   session (AuthProvider / useAuth)
-│   ├── profile/            #   profiles row — needed by both AuthProvider and the profile tab
-│   └── posts/              #   feed/posts repository — used by the home feed and the profile tab
+│   ├── fields/             #   fields CRUD — needed by both the map and the profile tab
+│   └── profile/            #   profiles row — needed by both AuthProvider and the profile tab
 ├── theme/                  # Paper theme (theme.ts) + useAppTheme — the app's one palette (see "UI & theming")
 └── types/                  # database.types.ts (generated) + global TS types
 ```
@@ -162,11 +167,11 @@ New screen → `src/features/<feature>/screens/`, and register the route in `src
 - **`App.tsx` and `src/navigation/` are the composition root** — they may import from any feature (that's their job: wiring). Features still must not import each other.
 - `src/theme` and `src/types` are foundational — any layer may import them (e.g. `src/components/Icon.tsx` uses `useAppTheme`).
 - Screens read/write data only through a `repository/` (feature) or `src/services/` layer, never `supabase`/`AsyncStorage`/`fetch` directly — so the source can be swapped later.
-- **Imports across top-level folders use the `@/` alias** (`@/services/auth`, `@/theme`, `@/navigation/types`). Inside a feature stay relative (`../components/FormTextInput`) — a neighbouring file reads worse through an alias than through `./`. `tsconfig.json` is `strict`.
+- **Imports across top-level folders use the `@/` alias** (`@/services/auth`, `@/theme`, `@/navigation/types`). Inside a feature stay relative (`../components/MapGLView`) — a neighbouring file reads worse through an alias than through `./`. `tsconfig.json` is `strict`.
 
 ### Project status
 
-This is a **contest-app boilerplate**, not a finished product. Despite the `agro-connect` repo name, the app is an auth flow (real Login form + 3-step Register wizard, both against Supabase) in front of a 5-tab shell. Home is a demo counter; Map / `?` are placeholders. **Create** is the 5-step post wizard (also reused for editing). **Profile** is the most built-out feature: `Appbar.Header` (bell / `@name` / gear — gear currently does `signOut`), a `ProfileInfo` card off the real `profiles` row, and a "Мои посты / Закладки" switch whose posts tab renders the real feed filtered by author — with working reactions, comment counts, an overflow menu wired to **edit** (`EditPost`) and **delete**, and a tap-through to **`PostDetail`** (comments + votes + reactions). Bookmarks are still a stub. The `fields` repository is still unused. `SPEC.md` still has open questions about the actual app idea. A prior commit added a full `src/map/` agricultural-field feature (map view, weather tile overlay, AsyncStorage field repository, mocked other-users' markers) that was **reverted** — check `git show 7a5c58a` if that direction is revived (its data-access layer maps onto `src/features/map/repository/`). Read and update `SPEC.md` before building real features.
+This is a **contest-app boilerplate**, not a finished product. Despite the `agro-connect` repo name, the app is an auth flow (real Login form + 3-step Register wizard, both against Supabase) in front of a 5-tab shell. Home is a demo counter; `?` is a placeholder. **Map** is a real 2GIS (MapGL-in-WebView) tab with the user's own fields — draw a point/polygon, edit, delete (see the "Карта" section in `SPEC.md`). **Create** is the 5-step post wizard (also reused for editing). **Profile** is the most built-out feature: `AppHeader` (bell / `@name` / gear — gear currently does `signOut`), a `ProfileInfo` card off the real `profiles` row, and a "Мои посты / Закладки / Мои поля" switch — posts render the real feed with working reactions, comment counts, an overflow menu wired to **edit** (`EditPost`) and **delete**, a tap-through to **`PostDetail`** (comments + votes + reactions); "Мои поля" lists `fields` with jump-to-map / edit / delete. Bookmarks are still a stub. `SPEC.md` still has open questions about the actual app idea. Read and update `SPEC.md` before building real features.
 
 ## Agent skills
 

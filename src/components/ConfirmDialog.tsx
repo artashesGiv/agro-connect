@@ -1,12 +1,6 @@
 import { useMemo } from 'react';
 import { StyleSheet } from 'react-native';
-import {
-  Button,
-  Dialog,
-  Portal,
-  Text,
-  type MD3Theme,
-} from 'react-native-paper';
+import { Button, Dialog, Portal, Text, type MD3Theme } from 'react-native-paper';
 
 import { useAppTheme } from '@/theme';
 
@@ -20,18 +14,22 @@ type ConfirmDialogProps = {
   cancelLabel?: string;
   /** Кнопка подтверждения и иконка — в цвете ошибки (для необратимых действий). */
   destructive?: boolean;
+  /** Иконка над заголовком; без неё диалог просто текстовый. */
   icon?: IconName;
   /** Спиннер на кнопке подтверждения; обе кнопки и закрытие по фону блокируются. */
   loading?: boolean;
   /** Текст ошибки красным внутри диалога — диалог остаётся открытым. */
   error?: string | null;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   onCancel: () => void;
 };
 
 /**
  * Диалог подтверждения в стиле темы приложения — замена системному `Alert`.
  * Работает через `Portal` (в `App.tsx` `PaperProvider` уже даёт `PortalHost`).
+ *
+ * Пока идёт операция (`loading`), диалог не закрывается ни кнопкой, ни тапом по
+ * фону — иначе можно уйти, не узнав, чем кончилось.
  */
 export function ConfirmDialog({
   visible,
@@ -52,7 +50,11 @@ export function ConfirmDialog({
 
   return (
     <Portal>
-      <Dialog visible={visible} onDismiss={loading ? () => {} : onCancel}>
+      <Dialog
+        visible={visible}
+        onDismiss={loading ? () => {} : onCancel}
+        dismissable={!loading}
+      >
         {icon ? <Dialog.Icon icon={icon} color={accent} /> : null}
         <Dialog.Title style={styles.title}>{title}</Dialog.Title>
         {message || error ? (
@@ -66,12 +68,16 @@ export function ConfirmDialog({
           </Dialog.Content>
         ) : null}
         <Dialog.Actions>
-          <Button onPress={onCancel} disabled={loading} textColor={theme.colors.onSurfaceVariant}>
+          <Button
+            onPress={onCancel}
+            disabled={loading}
+            textColor={theme.colors.onSurfaceVariant}
+          >
             {cancelLabel}
           </Button>
           <Button
             mode="contained"
-            onPress={onConfirm}
+            onPress={() => void onConfirm()}
             loading={loading}
             disabled={loading}
             buttonColor={destructive ? theme.colors.error : undefined}
