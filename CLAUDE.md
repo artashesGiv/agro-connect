@@ -70,7 +70,7 @@ Android draws the app **edge-to-edge** (RN 0.81+), so content runs under the sta
 **react-hook-form + zod** (`@hookform/resolvers/zod`). `zod` is pinned to `^3.25.x` on purpose — Expo's tooling already pulls exactly that version transitively, so the pin dedupes to one copy (v3 API: `z.string().email()`).
 
 - **Schema per feature** in `src/features/<feature>/schemas/` — e.g. `loginSchema.ts` exports `loginSchema`, `type LoginFormValues = z.infer<typeof loginSchema>`, and `loginDefaults`. The schema is the single source for both validation and the values type.
-- **`src/features/auth/components/FormTextInput.tsx`** — the bridge: `Controller` (rhf) ↔ Paper `TextInput` + `HelperText`. Generic over the form type (`control` + `name` + `label` + passthrough `TextInputProps`); shows the field's zod error beneath it; renders an eye toggle when `secureTextEntry` is set. This is the pattern for every form — promote it to `src/components/` once a second feature has a form.
+- **`src/components/FormTextInput.tsx`** — the bridge: `Controller` (rhf) ↔ Paper `TextInput` + `HelperText`. Generic over the form type (`control` + `name` + `label` + passthrough `TextInputProps`); shows the field's zod error beneath it; renders an eye toggle when `secureTextEntry` is set. This is the pattern for every form. It lived in `features/auth/` until the map grew a form too — a second consumer is what moved it up to `src/components/`. It works outside a `KeyboardAwareScreen` (`useFieldFocus()` degrades to a no-op), which is why the map's Paper `Dialog` can use it.
 - **Screen wiring:** `useForm<Values>({ resolver: zodResolver(schema), defaultValues, mode: 'onTouched' })`, submit via `handleSubmit(values => signIn(values))`. Field errors render under the fields; a server/auth error comes from `useAuth().error` shown above the form (it self-clears on the next submit).
 - **Multi-step form (Register):** one `useForm` for the whole wizard in `src/features/auth/forms/RegisterFormProvider.tsx` (RHF `FormProvider`); each step screen pulls it via `useFormContext<RegisterFormValues>()`. A step validates only its own fields with `await trigger(REGISTER_STEP_FIELDS.<step>)` before `navigation.navigate(...)`. `RegisterStepLayout` is the shared step shell (back + progress bar + title + footer button). The steps are screens of a nested native-stack (`RegisterNavigator`), so `navigation.goBack()` moves between steps and, on step 1, bubbles up to `Login`.
 - Only the last step touches the network (`useAuth().signUp`); steps 1-2 are pure local validation. The step-2 fields (`name`, `specialization`, `region`) mirror the `profiles` columns exactly — the schema has no first/last-name or nickname column, so do not reintroduce them in the form.
@@ -106,7 +106,10 @@ The whole backend is one hosted Supabase project (`api-docs/` holds the schema d
 
 Screens never touch `supabase` directly — they go through a feature `repository/` (and usually a thin hook next to it).
 
-- `features/map/repository/fieldsRepository.ts` + `hooks/useFields.ts` — CRUD over `fields`. The domain type is `{ latitude, longitude }`; writes serialize to WKT `POINT(lon lat)` (**longitude first**). Reads deliberately do **not** select `center` / `boundary`: PostgREST returns PostGIS columns as hex EWKB, which is why the generated types say `unknown`. **TODO(backend):** a view/RPC with `st_asgeojson` is needed before the map can draw anything.
+- `features/map/repository/fieldsRepository.ts` + `hooks/useFields.ts` — the user's own `fields`. The domain type is `{ latitude, longitude }`, and PostGIS wants **longitude first** everywhere.
+  - **Writes go out as EWKT** (`SRID=4326;POINT(lon lat)`, `SRID=4326;POLYGON((...))`). Bare WKT would arrive as SRID 0 and be rejected by a `geometry(...,4326)` column. `owner_id` is set by the client — the server does not fill it, and RLS demands `owner_id = auth.uid()`.
+  - **Reads use `.geojson()`** (`Accept: application/geo+json`), so PostgREST calls `st_asgeojson` itself and the hex-EWKB problem is gone — no backend view was needed after all. Two requests, one per geometry column: PostgREST's behaviour when a select carries *two* geometry columns is undocumented. The response is parsed defensively because `.geojson()` is typed as `Record<string, unknown>`.
+  - `boundary` is the outer ring only; holes are dropped on read and never produced on write.
 - `features/home/repository/postsRepository.ts` + `hooks/useFeed.ts` — the feed: one select with all joins (author profile, crop, type, stage, status, media) instead of N follow-up queries. Filtering on an embedded table needs `!inner`, otherwise PostgREST nulls the embedded object instead of dropping the parent row — hence `feedSelect(innerPostType)`.
 - The hooks are intentionally hand-rolled (`loading` / `error` / `reload`, no cache). When caching actually becomes a problem, react-query slots in behind the same hook signature and no screen changes.
 - Not wrapped yet, by design: `post_reactions`, `answers`, `answer_votes` — trivial insert/delete that should be written against the screen that needs them.
@@ -123,14 +126,15 @@ src/
 │   │                       #   repository/postsRepository.ts, hooks/useFeed.ts, screens/
 │   ├── create/  placeholder/  profile/   # tab placeholders (profile also holds the logout button)
 │   ├── auth/               # auth UI: screens/ (+ screens/register/ wizard), navigation/ (Auth + nested Register),
-│   │                       #   schemas/ (zod), forms/RegisterFormProvider.tsx, components/ (FormTextInput, RegisterStepLayout)
+│   │                       #   schemas/ (zod), forms/RegisterFormProvider.tsx, components/RegisterStepLayout.tsx
 │   │                       #   (session logic lives in src/services/auth — see "Auth — the session")
-│   └── map/                # the "Карта" tab (placeholder screen) + reference feature template:
-│       ├── components/     #   UI used only by this feature
-│       ├── hooks/          #   hooks used only by this feature (useFields)
+│   └── map/                # the "Карта" tab — 2GIS map + the user's own fields:
+│       ├── components/     #   MapGLView (WebView), mapHtml.ts (page + bridge), FieldFormDialog
+│       ├── hooks/          #   useFields, useCurrentLocation
 │       ├── repository/     #   data access for this feature — the only place that talks to Supabase
+│       ├── schemas/        #   zod schema for the new-field form
 │       └── screens/        #   the feature's screens
-├── components/             # shared "dumb" UI reused across features — Icon.tsx; add Button, Card, ...
+├── components/             # shared "dumb" UI reused across features — Icon.tsx, FormTextInput.tsx, Screen.tsx, ...
 ├── hooks/                  # (empty) shared hooks — useDebounce, useKeyboardVisible, ...
 ├── utils/                  # (empty) pure functions, formatters, constants
 ├── services/               # app-wide singletons:
@@ -150,7 +154,7 @@ New screen → `src/features/<feature>/screens/`, and register the route in `src
 - **`App.tsx` and `src/navigation/` are the composition root** — they may import from any feature (that's their job: wiring). Features still must not import each other.
 - `src/theme` and `src/types` are foundational — any layer may import them (e.g. `src/components/Icon.tsx` uses `useAppTheme`).
 - Screens read/write data only through a `repository/` (feature) or `src/services/` layer, never `supabase`/`AsyncStorage`/`fetch` directly — so the source can be swapped later.
-- **Imports across top-level folders use the `@/` alias** (`@/services/auth`, `@/theme`, `@/navigation/types`). Inside a feature stay relative (`../components/FormTextInput`) — a neighbouring file reads worse through an alias than through `./`. `tsconfig.json` is `strict`.
+- **Imports across top-level folders use the `@/` alias** (`@/services/auth`, `@/theme`, `@/navigation/types`). Inside a feature stay relative (`../components/MapGLView`) — a neighbouring file reads worse through an alias than through `./`. `tsconfig.json` is `strict`.
 
 ### Project status
 

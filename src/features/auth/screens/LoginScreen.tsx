@@ -9,7 +9,7 @@ import type { LoginScreenProps } from '@/navigation/types';
 import { useAuth } from '@/services/auth';
 import { useAppTheme } from '@/theme';
 
-import { FormTextInput } from '../components/FormTextInput';
+import { FormTextInput } from '@/components/FormTextInput';
 import {
   loginDefaults,
   loginSchema,

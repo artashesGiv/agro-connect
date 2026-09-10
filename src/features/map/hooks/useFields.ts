@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import { toUserMessage } from '@/services/supabase';
 
@@ -12,44 +12,33 @@ type UseFieldsResult = {
 };
 
 /**
- * Тонкая обёртка над репозиторием: загрузка при монтировании + ручной reload.
+ * Тонкая обёртка над репозиторием. Сама при монтировании не грузит: экран
+ * вызывает `reload` при каждом появлении вкладки, и автозагрузка означала бы
+ * два одинаковых запроса подряд.
+ *
  * Кэша нет намеренно — когда он понадобится, сюда встанет react-query,
  * и экраны менять не придётся.
  */
 export function useFields(): UseFieldsResult {
   const [fields, setFields] = useState<Field[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Отсекает ответ предыдущей загрузки, если началась новая. */
+  const runIdRef = useRef(0);
 
-  const load = useCallback(async () => {
+  const reload = useCallback(async () => {
+    const runId = ++runIdRef.current;
     setLoading(true);
     setError(null);
     try {
-      setFields(await getFields());
+      const data = await getFields();
+      if (runIdRef.current === runId) setFields(data);
     } catch (cause) {
-      setError(toUserMessage(cause));
+      if (runIdRef.current === runId) setError(toUserMessage(cause));
     } finally {
-      setLoading(false);
+      if (runIdRef.current === runId) setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    getFields()
-      .then((data) => {
-        if (active) setFields(data);
-      })
-      .catch((cause) => {
-        if (active) setError(toUserMessage(cause));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  return { fields, loading, error, reload: load };
+  return { fields, loading, error, reload };
 }

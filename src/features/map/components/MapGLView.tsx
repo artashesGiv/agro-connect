@@ -5,7 +5,21 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { useAppTheme } from '@/theme';
 
-import { buildMapHtml, flyToScript, parseMapMessage, type LngLat } from './mapHtml';
+import {
+  buildMapHtml,
+  cancelDrawingScript,
+  finishPolygonScript,
+  flyToScript,
+  loadDrawingScript,
+  parseMapMessage,
+  requestCenterScript,
+  setFieldsScript,
+  startPolygonScript,
+  undoScript,
+  type LngLat,
+  type MapMessage,
+  type MapPalette,
+} from './mapHtml';
 
 /**
  * Ключ MapGL. В отличие от `supabase/client.ts` мы здесь не бросаем исключение
@@ -25,25 +39,48 @@ const MAPGL_BASE_URL = 'https://localhost';
 const READY_TIMEOUT_MS = 15000;
 
 export type MapGLViewHandle = {
-  /** Перелететь к точке. Вызов до готовности карты запоминается и повторится. */
+  /** Перелететь к точке. Вызовы до готовности карты применяются после неё. */
   flyTo: (center: LngLat, zoom: number) => void;
+  /** Запросить центр карты — ответ придёт сообщением `center`. */
+  requestCenter: () => void;
+  /** Перерисовать сохранённые поля. */
+  setFields: (polygons: LngLat[][], points: LngLat[]) => void;
+  /** Лениво подтянуть рисовалку — ответ придёт `drawing-ready` / `drawing-error`. */
+  loadDrawing: () => void;
+  startPolygon: () => void;
+  undo: () => void;
+  /** Забрать нарисованный контур — ответ `polygon` / `polygon-invalid`. */
+  finishPolygon: () => void;
+  cancelDrawing: () => void;
+};
+
+type MapGLViewProps = {
+  /** События страницы, кроме готовности и фатальных ошибок — их держим внутри. */
+  onEvent?: (message: MapMessage) => void;
 };
 
 type Status = 'loading' | 'ready' | 'error';
 
 /**
  * Карта 2GIS (MapGL JS API) внутри WebView: спиннер на загрузке, экран ошибки
- * с повтором и императивный `flyTo`. Всё остальное — детали страницы в
- * `mapHtml.ts`.
+ * с повтором и императивные команды странице. Всё остальное — детали страницы
+ * в `mapHtml.ts`.
  */
-export const MapGLView = forwardRef<MapGLViewHandle>(function MapGLView(_props, ref) {
+export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function MapGLView(
+  { onEvent },
+  ref,
+) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
   const webViewRef = useRef<WebView>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** Перелёт, заказанный до `styleload`: применим, как только карта готова. */
-  const pendingRef = useRef<{ center: LngLat; zoom: number } | null>(null);
+  /**
+   * Команды, заказанные до `styleload`. Ключ — имя команды, поэтому повторный
+   * заказ вытесняет предыдущий: два перелёта подряд не превратятся в два
+   * перелёта после готовности.
+   */
+  const pendingRef = useRef(new Map<string, string>());
   const statusRef = useRef<Status>('loading');
 
   const [status, setStatus] = useState<Status>(MAPGL_KEY ? 'loading' : 'error');
@@ -51,9 +88,21 @@ export const MapGLView = forwardRef<MapGLViewHandle>(function MapGLView(_props, 
   // загрузился скрипт MapGL, надёжнее целиком, чем через reload().
   const [attempt, setAttempt] = useState(0);
 
+  const palette: MapPalette = useMemo(
+    () => ({
+      background: theme.colors.background,
+      // Заливка полупрозрачная: под полем должна оставаться видна карта.
+      fieldFill: `${theme.colors.primary}33`,
+      fieldStroke: theme.colors.primary,
+      pointFill: theme.colors.primary,
+      pointStroke: theme.colors.onPrimary,
+    }),
+    [theme.colors.background, theme.colors.onPrimary, theme.colors.primary],
+  );
+
   const html = useMemo(
-    () => (MAPGL_KEY ? buildMapHtml(MAPGL_KEY, theme.colors.background) : ''),
-    [theme.colors.background],
+    () => (MAPGL_KEY ? buildMapHtml(MAPGL_KEY, palette) : ''),
+    [palette],
   );
 
   const clearTimer = useCallback(() => {
@@ -63,13 +112,10 @@ export const MapGLView = forwardRef<MapGLViewHandle>(function MapGLView(_props, 
     }
   }, []);
 
-  const changeStatus = useCallback(
-    (next: Status) => {
-      statusRef.current = next;
-      setStatus(next);
-    },
-    [],
-  );
+  const changeStatus = useCallback((next: Status) => {
+    statusRef.current = next;
+    setStatus(next);
+  }, []);
 
   const fail = useCallback(
     (reason: string) => {
@@ -83,15 +129,29 @@ export const MapGLView = forwardRef<MapGLViewHandle>(function MapGLView(_props, 
     [changeStatus, clearTimer],
   );
 
-  const flyTo = useCallback((center: LngLat, zoom: number) => {
+  /** Выполняет команду сразу или откладывает до готовности карты. */
+  const run = useCallback((command: string, script: string) => {
     if (statusRef.current !== 'ready') {
-      pendingRef.current = { center, zoom };
+      pendingRef.current.set(command, script);
       return;
     }
-    webViewRef.current?.injectJavaScript(flyToScript(center, zoom));
+    webViewRef.current?.injectJavaScript(script);
   }, []);
 
-  useImperativeHandle(ref, () => ({ flyTo }), [flyTo]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      flyTo: (center, zoom) => run('flyTo', flyToScript(center, zoom)),
+      requestCenter: () => run('requestCenter', requestCenterScript()),
+      setFields: (polygons, points) => run('setFields', setFieldsScript(polygons, points)),
+      loadDrawing: () => run('loadDrawing', loadDrawingScript()),
+      startPolygon: () => run('startPolygon', startPolygonScript()),
+      undo: () => run('undo', undoScript()),
+      finishPolygon: () => run('finishPolygon', finishPolygonScript()),
+      cancelDrawing: () => run('cancelDrawing', cancelDrawingScript()),
+    }),
+    [run],
+  );
 
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
@@ -103,15 +163,20 @@ export const MapGLView = forwardRef<MapGLViewHandle>(function MapGLView(_props, 
         return;
       }
 
+      if (message.type !== 'ready') {
+        onEvent?.(message);
+        return;
+      }
+
       clearTimer();
       changeStatus('ready');
       const pending = pendingRef.current;
-      if (pending) {
-        pendingRef.current = null;
-        webViewRef.current?.injectJavaScript(flyToScript(pending.center, pending.zoom));
+      pendingRef.current = new Map();
+      for (const script of pending.values()) {
+        webViewRef.current?.injectJavaScript(script);
       }
     },
-    [changeStatus, clearTimer, fail],
+    [changeStatus, clearTimer, fail, onEvent],
   );
 
   const handleLoadStart = useCallback(() => {
@@ -120,7 +185,7 @@ export const MapGLView = forwardRef<MapGLViewHandle>(function MapGLView(_props, 
   }, [clearTimer, fail]);
 
   const retry = useCallback(() => {
-    pendingRef.current = null;
+    pendingRef.current = new Map();
     clearTimer();
     changeStatus('loading');
     setAttempt((value) => value + 1);

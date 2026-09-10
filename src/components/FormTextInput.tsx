@@ -8,7 +8,7 @@ import {
 import { StyleSheet, View } from 'react-native';
 import { HelperText, TextInput, type TextInputProps } from 'react-native-paper';
 
-import { useFieldFocus } from '@/components/KeyboardAwareScreen';
+import { useFieldFocus } from './KeyboardAwareScreen';
 
 type FormTextInputProps<T extends FieldValues> = {
   control: Control<T>;
