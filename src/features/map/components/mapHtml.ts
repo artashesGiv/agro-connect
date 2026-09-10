@@ -48,6 +48,8 @@ export type MapMessage =
   | { type: 'drawing-error'; message: string }
   /** Контур замкнулся — пора в фазу правки. */
   | { type: 'contour-closed' }
+  /** Пользователь тапнул по сохранённому полю. */
+  | { type: 'field-tap'; id: string }
   | { type: 'polygon'; ring: LngLat[] }
   | { type: 'polygon-invalid' };
 
@@ -75,6 +77,10 @@ export function parseMapMessage(raw: string): MapMessage | null {
       case 'center': {
         const center = readLngLat((data as { center?: unknown }).center);
         return center ? { type, center } : null;
+      }
+      case 'field-tap': {
+        const { id } = data as { id?: unknown };
+        return typeof id === 'string' ? { type, id } : null;
       }
       case 'polygon': {
         const { ring } = data as { ring?: unknown };
@@ -117,9 +123,24 @@ export function requestCenterScript(): string {
   return 'window.__map && window.__map.sendCenter(); true;';
 }
 
+/** Поле на карте: контур либо одиночная точка, всегда со своим id. */
+export type FieldShape =
+  | { id: string; ring: LngLat[] }
+  | { id: string; center: LngLat };
+
 /** Отрисовывает сохранённые поля: полигоны для контуров, точки для остальных. */
-export function setFieldsScript(polygons: LngLat[][], points: LngLat[]): string {
-  return `window.__map && window.__map.setFields(${JSON.stringify({ polygons, points })}); true;`;
+export function setFieldsScript(shapes: FieldShape[]): string {
+  return `window.__map && window.__map.setFields(${JSON.stringify(shapes)}); true;`;
+}
+
+/** Загружает существующий контур в редактор — правка координат поля. */
+export function editPolygonScript(ring: LngLat[]): string {
+  return `window.__map && window.__map.editPolygon(${JSON.stringify(ring)}); true;`;
+}
+
+/** Тапы по сохранённым полям глушим на время создания и правки. */
+export function setFieldTapsScript(enabled: boolean): string {
+  return `window.__map && window.__map.setFieldTaps(${String(enabled)}); true;`;
 }
 
 export function loadDrawingScript(): string {
@@ -244,6 +265,8 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
       var FIELDS_PURPOSE = 'app-fields';
       var fieldsSource = null;
       var fieldMarkers = [];
+      /** Во время создания и правки тап по чужому полю только мешает. */
+      var fieldTapsEnabled = true;
       var drawing = null;
       var drawingLoad = null;
       /**
@@ -273,11 +296,91 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
       map.on('styleloaderror', function () {
         send({ type: 'error', message: 'style-load-failed' });
       });
+      map.on('click', function (event) {
+        if (!fieldTapsEnabled) return;
+        var data = event && event.targetData;
+        if (!data || data.type !== 'geojson' || !data.feature) return;
+        var props = data.feature.properties || {};
+        if (props.fieldId) send({ type: 'field-tap', id: String(props.fieldId) });
+      });
+
       // Событие с типом 'invalidtilekey' — это истёкший или чужой ключ.
       map.on('error', function (event) {
         var type = event && event.type ? String(event.type) : 'unknown';
         send({ type: 'error', message: 'map-error: ' + type });
       });
+
+      /** Собирает terra-draw один раз на страницу; повторные вызовы бесплатны. */
+      function ensureDrawing() {
+        if (drawing) return;
+        var td = window.terraDraw;
+        var adapter = new window.mapglTerraDraw.TerraDrawMapGlAdapter({
+          map: map,
+          mapgl: mapgl
+        });
+        // Оба метода адаптера 0.4.0 сводятся к map.blockInteraction() /
+        // unblockInteraction(): setDoubleClickToZoom — из-за копипасты с
+        // setDraggability, и оба вызываются terra-draw по своим поводам
+        // (первый на старте режима, второй на каждом pointerup). В
+        // результате интерактивность карты меняется у нас под руками, и
+        // тумблер фазы правки работал бы через раз. Забираем управление
+        // себе целиком — см. setEditInteraction. Цена: во время
+        // рисования остаётся живым зум по двойному тапу.
+        adapter.setDoubleClickToZoom = function () {};
+        adapter.setDraggability = function () {};
+
+        drawing = new td.TerraDraw({
+          adapter: adapter,
+          // undo/redo в terra-draw — opt-in: без этой опции canUndo()
+          // всегда false и «Шаг назад» ничего не делает. Нужен именно
+          // modeLevel — он убирает последнюю поставленную точку (и
+          // работает только пока фигура рисуется).
+          undoRedo: { modeLevel: new td.TerraDrawModeUndoRedo() },
+          modes: [
+            new td.TerraDrawPolygonMode({
+              // Без editable: в фазе рисования тап ставит точку, а
+              // протяжка всегда панорамирует карту. Правка вершин живёт
+              // в отдельной фазе, где жесты разводит тумблер.
+              showCoordinatePoints: true,
+              validation: td.ValidateNotSelfIntersecting
+            }),
+            new td.TerraDrawSelectMode({
+              flags: {
+                polygon: {
+                  feature: {
+                    // Полигон целиком не таскаем: одно случайное
+                    // движение не должно унести поле в другой район.
+                    draggable: false,
+                    coordinates: {
+                      draggable: true,
+                      // Потянув серединку ребра, можно добавить вершину.
+                      midpoints: { draggable: true }
+                    }
+                  }
+                }
+              }
+            })
+          ]
+        });
+
+        // Замыкание контура (тапом по замыкающей точке) сразу переводит
+        // в фазу правки: создать вторую фигуру после этого нечем.
+        drawing.on('finish', function (id) {
+          if (contourClosed) return;
+          contourClosed = true;
+          try {
+            drawing.setMode('select');
+            drawing.selectFeature(id);
+          } catch (e) {}
+          send({ type: 'contour-closed' });
+        });
+      }
+
+      function bindMarkerTap(marker, id) {
+        marker.on('click', function () {
+          if (fieldTapsEnabled) send({ type: 'field-tap', id: String(id) });
+        });
+      }
 
       function injectScript(src) {
         return new Promise(function (resolve, reject) {
@@ -324,25 +427,30 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
           send({ type: 'center', center: [center[0], center[1]] });
         },
 
-        setFields: function (data) {
+        setFields: function (shapes) {
           for (var i = 0; i < fieldMarkers.length; i++) {
             fieldMarkers[i].destroy();
           }
           fieldMarkers = [];
 
-          var features = data.polygons.map(function (ring) {
-            var closed = ring.slice();
+          var features = [];
+          for (var k = 0; k < shapes.length; k++) {
+            var shape = shapes[k];
+            if (!shape.ring) continue;
+            var closed = shape.ring.slice();
             var first = closed[0];
             var last = closed[closed.length - 1];
             if (first && last && (first[0] !== last[0] || first[1] !== last[1])) {
               closed.push(first);
             }
-            return {
+            features.push({
               type: 'Feature',
-              properties: {},
+              // id поля едет в properties: по нему клик по полигону
+              // превращается обратно в строку из базы.
+              properties: { fieldId: shape.id },
               geometry: { type: 'Polygon', coordinates: [closed] }
-            };
-          });
+            });
+          }
           var collection = { type: 'FeatureCollection', features: features };
 
           if (fieldsSource) {
@@ -355,16 +463,27 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
           }
 
           // Поля без контура рисуем кружком: он одинакового размера на любом
-          // зуме и не требует регистрировать иконку.
-          for (var j = 0; j < data.points.length; j++) {
-            fieldMarkers.push(new mapgl.CircleMarker(map, {
-              coordinates: data.points[j],
+          // зуме и не требует регистрировать иконку. Клик у CircleMarker свой,
+          // мимо targetData, поэтому подписываемся на каждый.
+          for (var j = 0; j < shapes.length; j++) {
+            if (!shapes[j].center) continue;
+            var marker = new mapgl.CircleMarker(map, {
+              coordinates: shapes[j].center,
               radius: 8,
               color: config.palette.pointFill,
               strokeWidth: 2,
               strokeColor: config.palette.pointStroke
-            }));
+            });
+            // id держим в замыкании, а не вытаскиваем из события: у маркера
+            // это targetData, а не target, и полагаться на форму события ради
+            // того, что и так известно, незачем.
+            bindMarkerTap(marker, shapes[j].id);
+            fieldMarkers.push(marker);
           }
+        },
+
+        setFieldTaps: function (enabled) {
+          fieldTapsEnabled = enabled;
         },
 
         loadDrawing: function () {
@@ -393,75 +512,48 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
 
         startPolygon: function () {
           try {
-            var td = window.terraDraw;
-            if (!drawing) {
-              var adapter = new window.mapglTerraDraw.TerraDrawMapGlAdapter({
-                map: map,
-                mapgl: mapgl
-              });
-              // Оба метода адаптера 0.4.0 сводятся к map.blockInteraction() /
-              // unblockInteraction(): setDoubleClickToZoom — из-за копипасты с
-              // setDraggability, и оба вызываются terra-draw по своим поводам
-              // (первый на старте режима, второй на каждом pointerup). В
-              // результате интерактивность карты меняется у нас под руками, и
-              // тумблер фазы правки работал бы через раз. Забираем управление
-              // себе целиком — см. setEditInteraction. Цена: во время
-              // рисования остаётся живым зум по двойному тапу.
-              adapter.setDoubleClickToZoom = function () {};
-              adapter.setDraggability = function () {};
-
-              drawing = new td.TerraDraw({
-                adapter: adapter,
-                // undo/redo в terra-draw — opt-in: без этой опции canUndo()
-                // всегда false и «Шаг назад» ничего не делает. Нужен именно
-                // modeLevel — он убирает последнюю поставленную точку (и
-                // работает только пока фигура рисуется).
-                undoRedo: { modeLevel: new td.TerraDrawModeUndoRedo() },
-                modes: [
-                  new td.TerraDrawPolygonMode({
-                    // Без editable: в фазе рисования тап ставит точку, а
-                    // протяжка всегда панорамирует карту. Правка вершин живёт
-                    // в отдельной фазе, где жесты разводит тумблер.
-                    showCoordinatePoints: true,
-                    validation: td.ValidateNotSelfIntersecting
-                  }),
-                  new td.TerraDrawSelectMode({
-                    flags: {
-                      polygon: {
-                        feature: {
-                          // Полигон целиком не таскаем: одно случайное
-                          // движение не должно унести поле в другой район.
-                          draggable: false,
-                          coordinates: {
-                            draggable: true,
-                            // Потянув серединку ребра, можно добавить вершину.
-                            midpoints: { draggable: true }
-                          }
-                        }
-                      }
-                    }
-                  })
-                ]
-              });
-
-              // Замыкание контура (тапом по замыкающей точке) сразу переводит
-              // в фазу правки: создать вторую фигуру после этого нечем.
-              drawing.on('finish', function (id) {
-                if (contourClosed) return;
-                contourClosed = true;
-                try {
-                  drawing.setMode('select');
-                  drawing.selectFeature(id);
-                } catch (e) {}
-                send({ type: 'contour-closed' });
-              });
-            }
+            ensureDrawing();
             contourClosed = false;
             drawing.start();
             drawing.setMode('polygon');
             map.unblockInteraction();
           } catch (e) {
             send({ type: 'drawing-error', message: 'draw-start-failed: ' + String(e) });
+          }
+        },
+
+        /**
+         * Правка координат уже сохранённого поля: кладём его контур в
+         * terra-draw и сразу открываем фазу правки — рисовать заново не нужно.
+         */
+        editPolygon: function (ring) {
+          try {
+            ensureDrawing();
+            contourClosed = true;
+            drawing.clear();
+            drawing.start();
+            drawing.setMode('select');
+
+            var closed = ring.slice();
+            var first = closed[0];
+            var last = closed[closed.length - 1];
+            if (first && last && (first[0] !== last[0] || first[1] !== last[1])) {
+              closed.push(first);
+            }
+            drawing.addFeatures([{
+              type: 'Feature',
+              // terra-draw требует, чтобы фигура называла режим, которому
+              // принадлежит, иначе она не попадёт в его хранилище.
+              properties: { mode: 'polygon' },
+              geometry: { type: 'Polygon', coordinates: [closed] }
+            }]);
+
+            var snapshot = drawing.getSnapshot();
+            if (snapshot.length > 0) drawing.selectFeature(snapshot[0].id);
+            map.unblockInteraction();
+            send({ type: 'contour-closed' });
+          } catch (e) {
+            send({ type: 'drawing-error', message: 'draw-edit-failed: ' + String(e) });
           }
         },
 

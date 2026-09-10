@@ -41,7 +41,7 @@ export async function getReactionTypes(): Promise<ReactionType[]> {
   return data;
 }
 
-/** TODO(backend): таблица `crops` пока пустая — список вернётся пустым. */
+/** Активные культуры для селектов. Справочник наполнен: 10 культур. */
 export async function getCrops(): Promise<Pick<Crop, 'id' | 'slug' | 'name'>[]> {
   const { data, error } = await supabase
     .from('crops')

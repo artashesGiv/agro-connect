@@ -8,6 +8,7 @@ import { useAppTheme } from '@/theme';
 import {
   buildMapHtml,
   cancelDrawingScript,
+  editPolygonScript,
   finishPolygonScript,
   flyToScript,
   loadDrawingScript,
@@ -15,9 +16,11 @@ import {
   requestCenterScript,
   restartPolygonScript,
   setEditInteractionScript,
+  setFieldTapsScript,
   setFieldsScript,
   startPolygonScript,
   undoScript,
+  type FieldShape,
   type LngLat,
   type MapMessage,
   type MapPalette,
@@ -46,10 +49,14 @@ export type MapGLViewHandle = {
   /** Запросить центр карты — ответ придёт сообщением `center`. */
   requestCenter: () => void;
   /** Перерисовать сохранённые поля. */
-  setFields: (polygons: LngLat[][], points: LngLat[]) => void;
+  setFields: (shapes: FieldShape[]) => void;
+  /** Включить или выключить реакцию на тап по сохранённому полю. */
+  setFieldTaps: (enabled: boolean) => void;
   /** Лениво подтянуть рисовалку — ответ придёт `drawing-ready` / `drawing-error`. */
   loadDrawing: () => void;
   startPolygon: () => void;
+  /** Загрузить существующий контур в редактор — правка координат поля. */
+  editPolygon: (ring: LngLat[]) => void;
   /** Стереть контур и вернуться в фазу рисования. */
   restartPolygon: () => void;
   undo: () => void;
@@ -149,9 +156,11 @@ export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function Ma
     () => ({
       flyTo: (center, zoom) => run('flyTo', flyToScript(center, zoom)),
       requestCenter: () => run('requestCenter', requestCenterScript()),
-      setFields: (polygons, points) => run('setFields', setFieldsScript(polygons, points)),
+      setFields: (shapes) => run('setFields', setFieldsScript(shapes)),
+      setFieldTaps: (enabled) => run('setFieldTaps', setFieldTapsScript(enabled)),
       loadDrawing: () => run('loadDrawing', loadDrawingScript()),
       startPolygon: () => run('startPolygon', startPolygonScript()),
+      editPolygon: (ring) => run('editPolygon', editPolygonScript(ring)),
       restartPolygon: () => run('restartPolygon', restartPolygonScript()),
       undo: () => run('undo', undoScript()),
       finishPolygon: () => run('finishPolygon', finishPolygonScript()),

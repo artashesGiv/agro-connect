@@ -9,6 +9,9 @@ import { fieldSchema, type FieldFormValues } from '../schemas/fieldSchema';
 
 type FieldFormDialogProps = {
   visible: boolean;
+  /** Заголовок диалога — форма одна и для создания, и для правки. */
+  title: string;
+  submitLabel: string;
   defaults: FieldFormValues;
   saving: boolean;
   /** Ошибка сохранения — показывается в самом диалоге. */
@@ -18,7 +21,7 @@ type FieldFormDialogProps = {
 };
 
 /**
- * Название и регион для только что нарисованного поля.
+ * Название и регион поля — при создании и при правке.
  *
  * Диалог, а не отдельный экран: два поля не стоят вложенного навигатора, а
  * карта под диалогом остаётся видна — пользователь не теряет из виду то, что
@@ -26,6 +29,8 @@ type FieldFormDialogProps = {
  */
 export function FieldFormDialog({
   visible,
+  title,
+  submitLabel,
   defaults,
   saving,
   error,
@@ -47,7 +52,7 @@ export function FieldFormDialog({
   return (
     <Portal>
       <Dialog visible={visible} onDismiss={saving ? () => {} : onCancel} dismissable={!saving}>
-        <Dialog.Title>Новое поле</Dialog.Title>
+        <Dialog.Title>{title}</Dialog.Title>
         <Dialog.Content>
           <FormTextInput control={control} name="name" label="Название" autoFocus />
           <FormTextInput control={control} name="region" label="Регион" />
@@ -64,7 +69,7 @@ export function FieldFormDialog({
             Отмена
           </Button>
           <Button onPress={handleSubmit(onSubmit)} loading={saving} disabled={saving}>
-            Сохранить
+            {submitLabel}
           </Button>
         </Dialog.Actions>
       </Dialog>

@@ -129,7 +129,7 @@ src/
 │   │                       #   schemas/ (zod), forms/RegisterFormProvider.tsx, components/RegisterStepLayout.tsx
 │   │                       #   (session logic lives in src/services/auth — see "Auth — the session")
 │   └── map/                # the "Карта" tab — 2GIS map + the user's own fields:
-│       ├── components/     #   MapGLView (WebView), mapHtml.ts (page + bridge), FieldFormDialog
+│       ├── components/     #   MapGLView (WebView), mapHtml.ts (page + bridge), FieldFormDialog, FieldCardDialog
 │       ├── hooks/          #   useFields, useCurrentLocation
 │       ├── repository/     #   data access for this feature — the only place that talks to Supabase
 │       ├── schemas/        #   zod schema for the new-field form

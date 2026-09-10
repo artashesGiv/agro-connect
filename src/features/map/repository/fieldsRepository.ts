@@ -1,4 +1,5 @@
 import { supabase } from '@/services/supabase';
+import type { TablesUpdate } from '@/types/database.types';
 
 export type Coordinates = {
   latitude: number;
@@ -85,6 +86,40 @@ export async function createField(ownerId: string, field: NewField): Promise<voi
     center: center ? toEwktPoint(center) : null,
     boundary: boundary ? toEwktPolygon(boundary) : null,
   });
+  if (error) throw error;
+}
+
+export type FieldPatch = {
+  name?: string;
+  region?: string | null;
+  center?: Coordinates | null;
+  boundary?: Coordinates[] | null;
+};
+
+/**
+ * Частичное обновление. Геометрию трогаем только если она названа в патче:
+ * правка названия не должна затирать контур, а правка контура — название.
+ * Как и при создании, новый контур приносит с собой пересчитанный центроид.
+ */
+export async function updateField(id: string, patch: FieldPatch): Promise<void> {
+  const changes: TablesUpdate<'fields'> = {};
+  if (patch.name !== undefined) changes.name = patch.name;
+  if (patch.region !== undefined) changes.region = patch.region;
+
+  if (patch.boundary !== undefined) {
+    changes.boundary = patch.boundary ? toEwktPolygon(patch.boundary) : null;
+    if (patch.center === undefined) {
+      const derived = patch.boundary ? centroid(patch.boundary) : null;
+      changes.center = derived ? toEwktPoint(derived) : null;
+    }
+  }
+  if (patch.center !== undefined) {
+    changes.center = patch.center ? toEwktPoint(patch.center) : null;
+  }
+
+  if (Object.keys(changes).length === 0) return;
+
+  const { error } = await supabase.from('fields').update(changes).eq('id', id);
   if (error) throw error;
 }
 

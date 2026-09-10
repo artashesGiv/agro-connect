@@ -8,12 +8,18 @@ import { useAuth } from '@/services/auth';
 import { toUserMessage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
 
+import { FieldCardDialog } from '../components/FieldCardDialog';
 import { FieldFormDialog } from '../components/FieldFormDialog';
 import { MapGLView, type MapGLViewHandle } from '../components/MapGLView';
-import { USER_ZOOM, type LngLat, type MapMessage } from '../components/mapHtml';
+import {
+  USER_ZOOM,
+  type FieldShape,
+  type LngLat,
+  type MapMessage,
+} from '../components/mapHtml';
 import { useCurrentLocation } from '../hooks/useCurrentLocation';
 import { useFields } from '../hooks/useFields';
-import { createField, type Coordinates } from '../repository/fieldsRepository';
+import { createField, updateField, type Coordinates } from '../repository/fieldsRepository';
 import { fieldDefaults, type FieldFormValues } from '../schemas/fieldSchema';
 
 /**
@@ -32,7 +38,16 @@ let warnedThisSession = false;
 type Mode = 'idle' | 'point' | 'drawing' | 'editing';
 
 /** Геометрия, уже нарисованная, но ещё не сохранённая. */
-type Draft = { center: Coordinates } | { boundary: Coordinates[] };
+type Geometry = { center: Coordinates } | { boundary: Coordinates[] };
+
+/**
+ * Что именно сохранит форма. Три случая различаются и запросом к базе, и
+ * заголовком диалога, поэтому они здесь, а не выводятся из пары флагов.
+ */
+type Pending =
+  | { kind: 'create'; geometry: Geometry }
+  | { kind: 'geometry'; id: string; geometry: Geometry }
+  | { kind: 'info'; id: string };
 
 /**
  * Вкладка «Карта»: карта 2GIS, свои поля на ней и создание новых.
@@ -60,10 +75,21 @@ export default function MapScreen() {
   const [locating, setLocating] = useState(false);
   /** Тумблер фазы правки: `true` — жесты уходят вершинам, `false` — карте. */
   const [editingVertices, setEditingVertices] = useState(false);
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [pending, setPending] = useState<Pending | null>(null);
+  /** Поле, по которому тапнули: показываем карточку. */
+  const [cardFieldId, setCardFieldId] = useState<string | null>(null);
+  /** Поле, чью геометрию сейчас правим. `null` — создаём новое. */
+  const [geometryTargetId, setGeometryTargetId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [snack, setSnack] = useState<string | null>(null);
+
+  /**
+   * Контур, который нужно загрузить в редактор вместо рисования с нуля.
+   * Живёт в ref, потому что нужен в обработчике `drawing-ready`, а тот не
+   * должен пересоздаваться на каждую правку.
+   */
+  const editRingRef = useRef<LngLat[] | null>(null);
 
   // Читаем режим из колбэков, не пересоздавая их при каждом переключении.
   const modeRef = useRef<Mode>('idle');
@@ -107,25 +133,34 @@ export default function MapScreen() {
     }, [goToUser, reload]),
   );
 
-  // Полигоны и одиночные точки страница рисует по-разному, поэтому делим здесь.
+  // Полигоны и одиночные точки страница рисует по-разному, поэтому делим
+  // здесь; id едет вместе с фигурой, чтобы тап вернулся строкой из базы.
   useEffect(() => {
-    const polygons: LngLat[][] = [];
-    const points: LngLat[] = [];
+    const shapes: FieldShape[] = [];
     for (const field of fields) {
       if (field.boundary) {
-        polygons.push(field.boundary.map((point) => [point.longitude, point.latitude]));
+        shapes.push({
+          id: field.id,
+          ring: field.boundary.map((point): LngLat => [point.longitude, point.latitude]),
+        });
       } else if (field.center) {
-        points.push([field.center.longitude, field.center.latitude]);
+        shapes.push({
+          id: field.id,
+          center: [field.center.longitude, field.center.latitude],
+        });
       }
     }
-    mapRef.current?.setFields(polygons, points);
+    mapRef.current?.setFields(shapes);
   }, [fields]);
 
   const stopDrawing = useCallback(() => {
     mapRef.current?.cancelDrawing();
+    mapRef.current?.setFieldTaps(true);
+    editRingRef.current = null;
     setMode('idle');
     setEditingVertices(false);
-    setDraft(null);
+    setPending(null);
+    setGeometryTargetId(null);
     setSaveError(null);
   }, []);
 
@@ -142,10 +177,31 @@ export default function MapScreen() {
     }, [stopDrawing]),
   );
 
-  const startPolygonMode = useCallback(() => {
-    setPreparingDrawing(true);
-    mapRef.current?.loadDrawing();
+  /** Общий вход в любой режим создания или правки геометрии. */
+  const beginGeometry = useCallback((fieldId: string | null) => {
+    setGeometryTargetId(fieldId);
+    // Пока рисуем, тап по соседнему полю открывал бы карточку поверх работы.
+    mapRef.current?.setFieldTaps(false);
   }, []);
+
+  const startPolygonMode = useCallback(
+    (fieldId: string | null, ring: LngLat[] | null) => {
+      beginGeometry(fieldId);
+      editRingRef.current = ring;
+      setPreparingDrawing(true);
+      mapRef.current?.loadDrawing();
+    },
+    [beginGeometry],
+  );
+
+  const startPointMode = useCallback(
+    (fieldId: string | null, center: Coordinates | null) => {
+      beginGeometry(fieldId);
+      if (center) mapRef.current?.flyTo([center.longitude, center.latitude], USER_ZOOM);
+      setMode('point');
+    },
+    [beginGeometry],
+  );
 
   const restart = useCallback(() => {
     mapRef.current?.restartPolygon();
@@ -161,12 +217,21 @@ export default function MapScreen() {
     mapRef.current?.setEditInteraction(next);
   }, [editingVertices]);
 
+  // Читаем цель правки из колбэка, не пересоздавая его на каждое изменение.
+  const geometryTargetIdRef = useRef<string | null>(null);
+  geometryTargetIdRef.current = geometryTargetId;
+
   const handleMapEvent = useCallback((message: MapMessage) => {
     switch (message.type) {
       case 'center':
-        setDraft({
-          center: { longitude: message.center[0], latitude: message.center[1] },
-        });
+        setPending(
+          pendingFor(geometryTargetIdRef.current, {
+            center: { longitude: message.center[0], latitude: message.center[1] },
+          }),
+        );
+        break;
+      case 'field-tap':
+        setCardFieldId(message.id);
         break;
       case 'contour-closed':
         setMode('editing');
@@ -176,18 +241,27 @@ export default function MapScreen() {
         mapRef.current?.setEditInteraction(false);
         break;
       case 'polygon':
-        setDraft({
-          boundary: message.ring.map(([longitude, latitude]) => ({ longitude, latitude })),
-        });
+        setPending(
+          pendingFor(geometryTargetIdRef.current, {
+            boundary: message.ring.map(([longitude, latitude]) => ({ longitude, latitude })),
+          }),
+        );
         break;
       case 'polygon-invalid':
         setSnack('Поставьте хотя бы три точки');
         break;
-      case 'drawing-ready':
+      case 'drawing-ready': {
         setPreparingDrawing(false);
-        setMode('drawing');
-        mapRef.current?.startPolygon();
+        const ring = editRingRef.current;
+        if (ring) {
+          // Правка существующего поля начинается сразу с готового контура.
+          mapRef.current?.editPolygon(ring);
+        } else {
+          setMode('drawing');
+          mapRef.current?.startPolygon();
+        }
         break;
+      }
       case 'drawing-error':
         setPreparingDrawing(false);
         // Пользователю причина ни о чём не скажет, а в Metro она нужна: сюда
@@ -202,24 +276,39 @@ export default function MapScreen() {
 
   const handleSave = useCallback(
     async (values: FieldFormValues) => {
-      if (!draft) return;
+      if (!pending) return;
       if (!user) {
         // Вкладка живёт за гейтом авторизации, так что сюда не попасть; но
         // молча ничего не делать по нажатию «Сохранить» — худший из исходов.
         setSaveError('Сессия не найдена. Войдите заново.');
         return;
       }
+      const region = values.region.length > 0 ? values.region : null;
       setSaving(true);
       setSaveError(null);
       try {
-        await createField(user.id, {
-          name: values.name,
-          region: values.region.length > 0 ? values.region : null,
-          center: 'center' in draft ? draft.center : null,
-          boundary: 'boundary' in draft ? draft.boundary : null,
-        });
-        stopDrawing();
-        setSnack('Поле сохранено');
+        if (pending.kind === 'info') {
+          // Геометрию не трогаем вовсе: правка названия не должна затирать
+          // контур, который мы даже не показывали в этой форме.
+          await updateField(pending.id, { name: values.name, region });
+          setPending(null);
+          setSnack('Поле обновлено');
+        } else {
+          const geometry = pending.geometry;
+          const patch = {
+            name: values.name,
+            region,
+            center: 'center' in geometry ? geometry.center : null,
+            boundary: 'boundary' in geometry ? geometry.boundary : null,
+          };
+          if (pending.kind === 'geometry') {
+            await updateField(pending.id, patch);
+          } else {
+            await createField(user.id, patch);
+          }
+          stopDrawing();
+          setSnack(pending.kind === 'geometry' ? 'Поле обновлено' : 'Поле сохранено');
+        }
         await reload();
       } catch (cause) {
         // Нарисованное намеренно не сбрасываем: обводить поле заново из-за
@@ -229,7 +318,7 @@ export default function MapScreen() {
         setSaving(false);
       }
     },
-    [draft, reload, stopDrawing, user],
+    [pending, reload, stopDrawing, user],
   );
 
   // Раньше `error` из `useFields` не использовался нигде: неудачная загрузка
@@ -238,12 +327,42 @@ export default function MapScreen() {
     if (fieldsError) setSnack(fieldsError);
   }, [fieldsError]);
 
+  const cardField = useMemo(
+    () => fields.find((item) => item.id === cardFieldId) ?? null,
+    [cardFieldId, fields],
+  );
+
   // Мемоизируем: `FieldFormDialog` сбрасывает форму при смене `defaults`, и
   // новый объект на каждый рендер затирал бы то, что пользователь печатает.
-  const formDefaults = useMemo(
-    () => fieldDefaults(fields.length, profile?.region ?? null),
-    [fields.length, profile?.region],
-  );
+  const formDefaults = useMemo(() => {
+    if (pending && pending.kind !== 'create') {
+      const target = fields.find((item) => item.id === pending.id);
+      if (target) return { name: target.name, region: target.region ?? '' };
+    }
+    return fieldDefaults(fields.length, profile?.region ?? null);
+  }, [fields, pending, profile?.region]);
+
+  const editingExisting = pending !== null && pending.kind !== 'create';
+
+  /** Карточка → правка координат: точке нужен прицел, контуру — редактор. */
+  const editGeometry = useCallback(() => {
+    if (!cardField) return;
+    setCardFieldId(null);
+    if (cardField.boundary) {
+      startPolygonMode(
+        cardField.id,
+        cardField.boundary.map((point): LngLat => [point.longitude, point.latitude]),
+      );
+    } else {
+      startPointMode(cardField.id, cardField.center);
+    }
+  }, [cardField, startPointMode, startPolygonMode]);
+
+  const editInfo = useCallback(() => {
+    if (!cardField) return;
+    setCardFieldId(null);
+    setPending({ kind: 'info', id: cardField.id });
+  }, [cardField]);
 
   const creating = mode !== 'idle';
 
@@ -351,7 +470,7 @@ export default function MapScreen() {
                 leadingIcon="map-marker-outline"
                 onPress={() => {
                   setMenuVisible(false);
-                  setMode('point');
+                  startPointMode(null, null);
                 }}
               />
               <Menu.Item
@@ -359,7 +478,7 @@ export default function MapScreen() {
                 leadingIcon="vector-polygon"
                 onPress={() => {
                   setMenuVisible(false);
-                  startPolygonMode();
+                  startPolygonMode(null, null);
                 }}
               />
             </Menu>
@@ -367,13 +486,22 @@ export default function MapScreen() {
         </>
       )}
 
+      <FieldCardDialog
+        field={cardField}
+        onClose={() => setCardFieldId(null)}
+        onEditInfo={editInfo}
+        onEditGeometry={editGeometry}
+      />
+
       <FieldFormDialog
-        visible={draft !== null}
+        visible={pending !== null}
+        title={editingExisting ? 'Правка поля' : 'Новое поле'}
+        submitLabel={editingExisting ? 'Обновить' : 'Сохранить'}
         defaults={formDefaults}
         saving={saving}
         error={saveError}
         onCancel={() => {
-          setDraft(null);
+          setPending(null);
           setSaveError(null);
         }}
         onSubmit={(values) => void handleSave(values)}
@@ -384,6 +512,13 @@ export default function MapScreen() {
       </Snackbar>
     </View>
   );
+}
+
+/** Одна и та же геометрия сохраняется по-разному, смотря что мы правим. */
+function pendingFor(targetId: string | null, geometry: Geometry): Pending {
+  return targetId === null
+    ? { kind: 'create', geometry }
+    : { kind: 'geometry', id: targetId, geometry };
 }
 
 function hintFor(mode: Mode, editingVertices: boolean): string {
