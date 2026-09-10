@@ -293,6 +293,13 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
       var drawing = null;
       var drawingLoad = null;
       /**
+       * terra-draw начинает почти каждый публичный метод с checkEnabled() и
+       * бросает «Terra Draw is not enabled», пока не вызван start(). Держим
+       * это состояние сами: повторный start() на запущенном экземпляре — тоже
+       * не то, что стоит проверять на живом пользователе.
+       */
+      var drawingStarted = false;
+      /**
        * terra-draw шлёт 'finish' не только на замыкание контура, но и после
        * каждого перетаскивания вершины в режиме выбора. Фаза правки должна
        * начаться ровно один раз, иначе тумблер сбрасывается сам собой.
@@ -410,6 +417,15 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
           } catch (e) {}
           send({ type: 'contour-closed' });
         });
+      }
+
+      /** Гарантирует, что terra-draw собран и запущен. */
+      function beginDrawing() {
+        ensureDrawing();
+        if (!drawingStarted) {
+          drawing.start();
+          drawingStarted = true;
+        }
       }
 
       function bindMarkerTap(marker, id) {
@@ -557,9 +573,9 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
 
         startPolygon: function () {
           try {
-            ensureDrawing();
+            beginDrawing();
             contourClosed = false;
-            drawing.start();
+            drawing.clear();
             drawing.setMode('polygon');
             map.unblockInteraction();
           } catch (e) {
@@ -573,10 +589,11 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
          */
         editPolygon: function (ring) {
           try {
-            ensureDrawing();
+            // start() строго первым: clear(), setMode() и addFeatures() все
+            // начинаются с checkEnabled() и бросают на незапущенном экземпляре.
+            beginDrawing();
             contourClosed = true;
             drawing.clear();
-            drawing.start();
             drawing.setMode('select');
 
             var closed = ring.slice();
@@ -593,8 +610,16 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
               geometry: { type: 'Polygon', coordinates: [closed] }
             }]);
 
-            var snapshot = drawing.getSnapshot();
-            if (snapshot.length > 0) drawing.selectFeature(snapshot[0].id);
+            // Берём именно полигон: addFeatures молча отбрасывает фигуру,
+            // не прошедшую валидацию, и снапшот тогда окажется пустым.
+            var loaded = drawing.getSnapshot().filter(function (feature) {
+              return feature.geometry && feature.geometry.type === 'Polygon';
+            })[0];
+            if (!loaded) {
+              send({ type: 'drawing-error', message: 'draw-edit-failed: contour-rejected' });
+              return;
+            }
+            drawing.selectFeature(loaded.id);
             map.unblockInteraction();
             send({ type: 'contour-closed' });
           } catch (e) {
@@ -603,7 +628,7 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
         },
 
         restartPolygon: function () {
-          if (!drawing) return;
+          if (!drawing || !drawingStarted) return;
           try {
             contourClosed = false;
             drawing.clear();
@@ -625,7 +650,8 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
         },
 
         undo: function () {
-          if (drawing && drawing.canUndo()) drawing.undo();
+          if (!drawing || !drawingStarted) return;
+          if (drawing.canUndo()) drawing.undo();
         },
 
         /**
@@ -633,7 +659,7 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
          * уже лежит в его хранилище: строящийся полигон появляется там сразу.
          */
         finishPolygon: function () {
-          if (!drawing) {
+          if (!drawing || !drawingStarted) {
             send({ type: 'polygon-invalid' });
             return;
           }
@@ -657,11 +683,12 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
 
         cancelDrawing: function () {
           contourClosed = false;
-          if (drawing) {
+          if (drawing && drawingStarted) {
             // Отдельные try: если clear() бросит, stop() всё равно должен
             // выполниться — иначе режим останется активным.
             try { drawing.clear(); } catch (e) {}
             try { drawing.stop(); } catch (e) {}
+            drawingStarted = false;
           }
           // Интерактивность карты возвращаем сами: методы адаптера заглушены.
           try { map.unblockInteraction(); } catch (e) {}
