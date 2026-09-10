@@ -1,6 +1,5 @@
 import { useFocusEffect } from '@react-navigation/native';
-import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
@@ -18,7 +17,7 @@ import { PostCard } from '@/components/PostCard';
 import { ProfileInfo } from '@/components/ProfileInfo';
 import { useFields } from '@/hooks/useFields';
 import { useReactions } from '@/hooks/useReactions';
-import type { ProfileMainScreenProps, RootTabParamList } from '@/navigation/types';
+import type { ProfileScreenProps } from '@/navigation/types';
 import { useAuth } from '@/services/auth';
 import { deleteField, type Field } from '@/services/fields';
 import { deletePost } from '@/services/posts';
@@ -50,12 +49,12 @@ const OWN_PROFILE_PLACEHOLDERS = {
  * Экран не обёрнут в `Screen`: у него фиксированная шапка (`AppHeader` через
  * `ProfileHeader`) над скроллом — верхнюю safe-area врезку даёт она, нижнюю — таб-бар.
  */
-export default function ProfileScreen({ navigation }: ProfileMainScreenProps) {
+export default function ProfileScreen({ navigation, route }: ProfileScreenProps) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const { user, profile } = useAuth();
   const [section, setSection] = useState<ProfileSection>('posts');
-  const { posts, setPosts, loading, error, reload } = useUserPosts(user?.id);
+  const { posts, setPosts, loading, error, reload, syncItem } = useUserPosts(user?.id);
   const { setReaction } = useReactions();
   const {
     fields,
@@ -71,14 +70,40 @@ export default function ProfileScreen({ navigation }: ProfileMainScreenProps) {
   const [deletingField, setDeletingField] = useState(false);
   /** Транзиентные сообщения: ошибка реакции, «Поле удалено» и т.п. */
   const [notice, setNotice] = useState<string | null>(null);
+  /** id поста, открытого в PostDetail/EditPost — перечитываем его при возврате. */
+  const openedRef = useRef<string | null>(null);
 
-  // Возврат на вкладку (после публикации/правки поста или правки поля на карте) —
-  // перечитываем оба списка: какая секция открыта, мы не знаем заранее.
   useFocusEffect(
     useCallback(() => {
-      void reload();
+      // Вернулись с PostDetail/EditPost — точечно обновляем один пост.
+      const openedId = openedRef.current;
+      openedRef.current = null;
+      if (openedId) void syncItem(openedId);
+      // После создания поста (мастер «+» уводит сюда) — полный reload: новый
+      // пост точечно не подтянуть.
+      if (route.params?.refresh) {
+        void reload();
+        navigation.setParams({ refresh: undefined });
+      }
+      // Поля — маленький список без пагинации, освежаем всегда (правка на карте).
       void reloadFields();
-    }, [reload, reloadFields]),
+    }, [syncItem, reload, reloadFields, route.params?.refresh, navigation]),
+  );
+
+  const openPost = useCallback(
+    (postId: string) => {
+      openedRef.current = postId;
+      navigation.navigate('PostDetail', { postId });
+    },
+    [navigation],
+  );
+
+  const editPost = useCallback(
+    (postId: string) => {
+      openedRef.current = postId;
+      navigation.navigate('EditPost', { postId });
+    },
+    [navigation],
   );
 
   const closeDeleteDialog = useCallback(() => {
@@ -150,19 +175,16 @@ export default function ProfileScreen({ navigation }: ProfileMainScreenProps) {
   }, [pendingDeleteField, reloadFields]);
 
   /**
-   * Переход к полю на карту. Карта — соседняя вкладка, поэтому идём через
-   * родительский таб-навигатор. Параметры чистим явно даже когда поля нет:
-   * таб помнит их между переходами, и без этого «Добавить поле» унесло бы
-   * к последнему открытому.
+   * Переход к полю на карту. Параметры чистим явно даже когда поля нет: таб
+   * помнит их между переходами, и без этого «Добавить поле» унесло бы к
+   * последнему открытому.
    */
   const openOnMap = useCallback(
     (field: Field | null, withCard: boolean) => {
-      navigation
-        .getParent<BottomTabNavigationProp<RootTabParamList>>()
-        ?.navigate('Map', {
-          focusFieldId: field?.id,
-          openCard: field ? withCard : undefined,
-        });
+      navigation.navigate('Map', {
+        focusFieldId: field?.id,
+        openCard: field ? withCard : undefined,
+      });
     },
     [navigation],
   );
@@ -203,9 +225,9 @@ export default function ProfileScreen({ navigation }: ProfileMainScreenProps) {
               onOpen={openOnMap}
               onDelete={setPendingDeleteField}
             />
-          ) : error ? (
+          ) : error && posts.length === 0 ? (
             <Text style={styles.stateText}>{error}</Text>
-          ) : loading ? (
+          ) : loading && posts.length === 0 ? (
             <ActivityIndicator style={styles.loader} />
           ) : posts.length === 0 ? (
             <Text style={styles.stateText}>Постов пока нет</Text>
@@ -219,16 +241,12 @@ export default function ProfileScreen({ navigation }: ProfileMainScreenProps) {
                 title={post.title}
                 description={post.description}
                 images={post.images}
-                onPress={() =>
-                  navigation.navigate('PostDetail', { postId: post.id })
-                }
+                onPress={() => openPost(post.id)}
                 reactions={post.reactions}
                 onToggleReaction={(code) => handleToggleReaction(post.id, code)}
                 commentCount={post.commentCount}
-                onComment={() =>
-                  navigation.navigate('PostDetail', { postId: post.id })
-                }
-                onEdit={() => navigation.navigate('EditPost', { postId: post.id })}
+                onComment={() => openPost(post.id)}
+                onEdit={() => editPost(post.id)}
                 onDelete={() => {
                   setDeleteError(null);
                   setPendingDeleteId(post.id);

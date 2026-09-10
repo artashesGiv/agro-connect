@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { StyleSheet, View } from 'react-native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { HelperText } from 'react-native-paper';
 
 import { PostCard } from '@/components/PostCard';
-import type { CreatePreviewScreenProps } from '@/navigation/types';
+import type {
+  CreatePreviewScreenProps,
+  RootTabParamList,
+} from '@/navigation/types';
 import { useAuth } from '@/services/auth';
 import { createPostWithMedia, updatePostWithMedia } from '@/services/posts';
 import { storage, toUserMessage } from '@/services/supabase';
@@ -61,7 +65,10 @@ export default function CreatePreviewScreen({
       await createPostWithMedia(user.id, input, newPhotos);
       reset();
       // Родитель мастера — таб-навигатор; уводим на «Профиль», где виден пост.
-      navigation.getParent()?.navigate('Profile' as never);
+      // `refresh: true` — чтобы лента «Мои посты» перечитала и показала новый.
+      navigation
+        .getParent<BottomTabNavigationProp<RootTabParamList>>()
+        ?.navigate('Profile', { refresh: true });
       navigation.popToTop();
     } catch (cause) {
       setError(toUserMessage(cause));

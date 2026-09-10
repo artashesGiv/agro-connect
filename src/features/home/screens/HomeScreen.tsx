@@ -1,117 +1,254 @@
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import type { MD3Theme } from 'react-native-paper';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import {
+  ActivityIndicator,
+  Button,
+  Snackbar,
+  Text,
+  type MD3Theme,
+} from 'react-native-paper';
 
-import { Screen } from '@/components/Screen';
+import { AppHeader } from '@/components/AppHeader';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { PostCard } from '@/components/PostCard';
+import { useReactions } from '@/hooks/useReactions';
+import type { HomeScreenProps } from '@/navigation/types';
+import { useAuth } from '@/services/auth';
+import { deletePost } from '@/services/posts';
+import { toggleReactionSummary } from '@/services/reactions';
+import { toUserMessage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
 
-export default function HomeScreen() {
+import { useFeed, type FeedItem } from '../hooks/useFeed';
+
+/**
+ * Вкладка «Главная»: бесконечная лента всех постов. Первая страница 15 постов,
+ * дальше подгрузка по 15 при долистывании (keyset-курсор в `useFeed`),
+ * pull-to-refresh. Карточки интерактивные; меню «редактировать/удалить» — только
+ * на своих постах.
+ */
+export default function HomeScreen({ navigation }: HomeScreenProps) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
-  const [count, setCount] = useState(0);
+  const { user } = useAuth();
+  const { setReaction } = useReactions();
+  const {
+    items,
+    setItems,
+    loading,
+    loadingMore,
+    refreshing,
+    error,
+    hasMore,
+    loadMore,
+    refresh,
+    retry,
+    syncItem,
+  } = useFeed();
+
+  /** id поста, открытого в PostDetail/EditPost — перечитываем его при возврате. */
+  const openedRef = useRef<string | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      const id = openedRef.current;
+      openedRef.current = null;
+      if (id) void syncItem(id);
+    }, [syncItem]),
+  );
+
+  const openPost = useCallback(
+    (postId: string) => {
+      openedRef.current = postId;
+      navigation.navigate('PostDetail', { postId });
+    },
+    [navigation],
+  );
+
+  const editPost = useCallback(
+    (postId: string) => {
+      openedRef.current = postId;
+      navigation.navigate('EditPost', { postId });
+    },
+    [navigation],
+  );
+
+  const [notice, setNotice] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleToggleReaction = useCallback(
+    async (postId: string, code: string) => {
+      if (!user) return;
+      const target = items.find((item) => item.id === postId);
+      if (!target) return;
+      const { next, previousCode, nextCode } = toggleReactionSummary(
+        target.reactions,
+        code,
+      );
+      const snapshot = items;
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === postId ? { ...item, reactions: next } : item,
+        ),
+      );
+      try {
+        await setReaction({
+          postId,
+          userId: user.id,
+          previous: previousCode,
+          next: nextCode,
+        });
+      } catch (cause) {
+        setItems(snapshot);
+        setNotice(
+          cause instanceof Error ? cause.message : 'Не удалось сохранить реакцию.',
+        );
+      }
+    },
+    [items, user, setItems, setReaction],
+  );
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pendingDeleteId) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deletePost(pendingDeleteId);
+      setItems((prev) => prev.filter((item) => item.id !== pendingDeleteId));
+      setPendingDeleteId(null);
+    } catch (cause) {
+      setDeleteError(toUserMessage(cause));
+    } finally {
+      setDeleting(false);
+    }
+  }, [pendingDeleteId, setItems]);
+
+  const renderItem = useCallback(
+    ({ item }: { item: FeedItem }) => (
+      <PostCard
+        author={item.author}
+        title={item.title}
+        description={item.description}
+        images={item.images}
+        onPress={() => openPost(item.id)}
+        reactions={item.reactions}
+        onToggleReaction={(code) => handleToggleReaction(item.id, code)}
+        commentCount={item.commentCount}
+        onComment={() => openPost(item.id)}
+        onEdit={item.isMine ? () => editPost(item.id) : undefined}
+        onDelete={
+          item.isMine
+            ? () => {
+                setDeleteError(null);
+                setPendingDeleteId(item.id);
+              }
+            : undefined
+        }
+      />
+    ),
+    [openPost, editPost, handleToggleReaction],
+  );
 
   return (
-    <Screen style={styles.container}>
-      <View style={styles.badge}>
-        <Text style={styles.badgeText}>EXPO · TYPESCRIPT · ANDROID</Text>
-      </View>
+    <View style={styles.root}>
+      <AppHeader title="Главная" />
 
-      <Text style={styles.title}>Базовое приложение готово</Text>
-      <Text style={styles.description}>
-        Проект настроен для быстрой разработки с Codex и сборки APK через
-        EAS Build.
-      </Text>
+      {loading ? (
+        <ActivityIndicator style={styles.loader} />
+      ) : error && items.length === 0 ? (
+        <View style={styles.center}>
+          <Text style={styles.stateText}>{error}</Text>
+          <Button mode="contained" onPress={() => void retry()}>
+            Повторить
+          </Button>
+        </View>
+      ) : (
+        <FlatList
+          data={items}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={styles.content}
+          onEndReached={() => void loadMore()}
+          onEndReachedThreshold={0.5}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />
+          }
+          ListEmptyComponent={
+            <Text style={styles.stateText}>Постов пока нет</Text>
+          }
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator style={styles.footer} />
+            ) : !hasMore && items.length > 0 ? (
+              <Text style={styles.footerText}>Больше постов нет</Text>
+            ) : null
+          }
+        />
+      )}
 
-      <View style={styles.card}>
-        <Text style={styles.counterLabel}>Проверка интерактивности</Text>
-        <Text style={styles.counter}>{count}</Text>
+      <ConfirmDialog
+        visible={pendingDeleteId !== null}
+        title="Удалить пост?"
+        message="Это действие нельзя отменить."
+        confirmLabel="Удалить"
+        destructive
+        loading={deleting}
+        error={deleteError}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          setPendingDeleteId(null);
+          setDeleteError(null);
+        }}
+      />
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Увеличить счётчик"
-          onPress={() => setCount((value) => value + 1)}
-          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-        >
-          <Text style={styles.buttonText}>Нажать</Text>
-        </Pressable>
-      </View>
-    </Screen>
+      <Snackbar
+        visible={notice !== null}
+        onDismiss={() => setNotice(null)}
+        duration={3000}
+      >
+        {notice ?? ''}
+      </Snackbar>
+    </View>
   );
 }
 
 const makeStyles = (theme: MD3Theme) =>
   StyleSheet.create({
-    container: {
+    root: {
       flex: 1,
       backgroundColor: theme.colors.background,
+    },
+    content: {
+      flexGrow: 1,
+      paddingBottom: 24,
+    },
+    loader: {
+      marginTop: 32,
+    },
+    center: {
+      flex: 1,
+      alignItems: 'center',
       justifyContent: 'center',
+      gap: 16,
       paddingHorizontal: 24,
     },
-    badge: {
-      alignSelf: 'flex-start',
-      backgroundColor: theme.colors.primaryContainer,
-      borderColor: theme.colors.primary,
-      borderRadius: 999,
-      borderWidth: 1,
-      marginBottom: 20,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-    },
-    badgeText: {
-      color: theme.colors.onPrimaryContainer,
-      fontSize: 11,
-      fontWeight: '700',
-      letterSpacing: 1.2,
-    },
-    title: {
-      color: theme.colors.onBackground,
-      fontSize: 34,
-      fontWeight: '800',
-      letterSpacing: -1,
-      lineHeight: 40,
-    },
-    description: {
+    stateText: {
       color: theme.colors.onSurfaceVariant,
-      fontSize: 17,
-      lineHeight: 25,
-      marginTop: 12,
-    },
-    card: {
-      backgroundColor: theme.colors.surface,
-      borderColor: theme.colors.outline,
-      borderRadius: 24,
-      borderWidth: 1,
-      marginTop: 36,
-      padding: 24,
-    },
-    counterLabel: {
-      color: theme.colors.onSurfaceVariant,
-      fontSize: 14,
-      fontWeight: '600',
-    },
-    counter: {
-      color: theme.colors.onSurface,
-      fontSize: 56,
-      fontVariant: ['tabular-nums'],
-      fontWeight: '800',
-      marginBottom: 20,
-      marginTop: 8,
-    },
-    button: {
-      alignItems: 'center',
-      backgroundColor: theme.colors.primary,
-      borderRadius: 14,
-      minHeight: 52,
-      justifyContent: 'center',
-      paddingHorizontal: 20,
-    },
-    buttonPressed: {
-      opacity: 0.78,
-      transform: [{ scale: 0.99 }],
-    },
-    buttonText: {
-      color: theme.colors.onPrimary,
       fontSize: 16,
-      fontWeight: '700',
+      textAlign: 'center',
+      marginTop: 32,
+      paddingHorizontal: 24,
+    },
+    footer: {
+      marginVertical: 16,
+    },
+    footerText: {
+      color: theme.colors.onSurfaceVariant,
+      fontSize: 13,
+      textAlign: 'center',
+      marginVertical: 16,
     },
   });

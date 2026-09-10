@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from '@/services/auth';
-import { getFeed } from '@/services/posts';
+import { getFeed, getPost, type FeedPost } from '@/services/posts';
 import { summarizeReactions, type ReactionSummary } from '@/services/reactions';
-import { dictionaries, storage, toUserMessage } from '@/services/supabase';
+import {
+  dictionaries,
+  storage,
+  toUserMessage,
+  type ReactionType,
+} from '@/services/supabase';
 
 export type { ReactionSummary };
 
@@ -21,11 +26,37 @@ export type ProfilePost = {
   commentCount: number;
 };
 
+function mapPost(
+  post: FeedPost,
+  urls: Record<string, string>,
+  activeTypes: ReactionType[],
+  viewerId: string | undefined,
+): ProfilePost {
+  return {
+    id: post.id,
+    postTypeCode: post.post_types?.code ?? 'field_update',
+    author: {
+      nickname: post.profiles?.name ?? 'без имени',
+      avatarUrl: post.profiles?.avatar_path
+        ? storage.getAvatarUrl(post.profiles.avatar_path)
+        : undefined,
+    },
+    title: post.title ?? 'Без заголовка',
+    description: post.body ?? undefined,
+    images: [...post.post_media]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((media) => urls[media.storage_path])
+      .filter((url): url is string => Boolean(url)),
+    reactions: summarizeReactions(post.post_reactions ?? [], activeTypes, viewerId),
+    commentCount: post.answers?.[0]?.count ?? 0,
+  };
+}
+
 /**
  * Посты автора для вкладки «Мои посты» (и позже — чужого профиля). Тянет ленту
  * с фильтром по `author_id`, подписывает URL для приватного бакета `post-media`
- * и сводит реакции/комментарии к счётчикам.
- * `reload` зовётся из экрана при фокусе — чтобы свежесозданный пост появился.
+ * и сводит реакции/комментарии к счётчикам. `syncItem` точечно перечитывает один
+ * пост после возврата с PostDetail / EditPost.
  */
 export function useUserPosts(userId?: string) {
   const { user } = useAuth();
@@ -51,27 +82,7 @@ export function useUserPosts(userId?: string) {
         post.post_media.map((media) => media.storage_path),
       );
       const urls = await storage.getPostMediaUrls(paths);
-
-      const mapped: ProfilePost[] = feed.map((post) => ({
-        id: post.id,
-        postTypeCode: post.post_types?.code ?? 'field_update',
-        author: {
-          nickname: post.profiles?.name ?? 'без имени',
-          avatarUrl: post.profiles?.avatar_path
-            ? storage.getAvatarUrl(post.profiles.avatar_path)
-            : undefined,
-        },
-        title: post.title ?? 'Без заголовка',
-        description: post.body ?? undefined,
-        images: [...post.post_media]
-          .sort((a, b) => a.sort_order - b.sort_order)
-          .map((media) => urls[media.storage_path])
-          .filter((url): url is string => Boolean(url)),
-        reactions: summarizeReactions(post.post_reactions ?? [], activeTypes, viewerId),
-        commentCount: post.answers?.[0]?.count ?? 0,
-      }));
-
-      setPosts(mapped);
+      setPosts(feed.map((post) => mapPost(post, urls, activeTypes, viewerId)));
     } catch (cause) {
       setError(toUserMessage(cause));
     } finally {
@@ -79,9 +90,30 @@ export function useUserPosts(userId?: string) {
     }
   }, [userId, viewerId]);
 
+  const syncItem = useCallback(
+    async (id: string) => {
+      try {
+        const post = await getPost(id);
+        if (!post) {
+          setPosts((prev) => prev.filter((item) => item.id !== id));
+          return;
+        }
+        const activeTypes = await dictionaries.getActiveReactionTypes();
+        const urls = await storage.getPostMediaUrls(
+          post.post_media.map((media) => media.storage_path),
+        );
+        const fresh = mapPost(post, urls, activeTypes, viewerId);
+        setPosts((prev) => prev.map((item) => (item.id === id ? fresh : item)));
+      } catch {
+        // Тихо: один пост не обновился — не рушим список.
+      }
+    },
+    [viewerId],
+  );
+
   useEffect(() => {
     void load();
   }, [load]);
 
-  return { posts, setPosts, loading, error, reload: load };
+  return { posts, setPosts, loading, error, reload: load, syncItem };
 }

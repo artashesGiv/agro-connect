@@ -97,8 +97,12 @@ export type FeedFilter = {
   /** Только посты этого автора — для вкладки «Мои посты» / чужого профиля. */
   authorId?: string;
   limit?: number;
-  /** Для пагинации: отдаём посты старше этой даты. */
-  before?: string;
+  /**
+   * Keyset-курсор для бесконечной ленты: последний показанный пост. Сортировка
+   * `created_at desc, id desc` (created_at не уникален), поэтому нужна и дата,
+   * и id — иначе посты с одинаковой секундой на границе страницы теряются.
+   */
+  before?: { createdAt: string; id: string };
 };
 
 export async function getFeed(filter: FeedFilter = {}): Promise<FeedPost[]> {
@@ -106,13 +110,19 @@ export async function getFeed(filter: FeedFilter = {}): Promise<FeedPost[]> {
     .from('posts')
     .select(feedSelect(Boolean(filter.postTypeCode)))
     .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(filter.limit ?? 20);
 
   if (filter.cropId) query = query.eq('crop_id', filter.cropId);
   if (filter.fieldId) query = query.eq('field_id', filter.fieldId);
   if (filter.authorId) query = query.eq('author_id', filter.authorId);
   if (filter.postTypeCode) query = query.eq('post_types.code', filter.postTypeCode);
-  if (filter.before) query = query.lt('created_at', filter.before);
+  if (filter.before) {
+    const { createdAt, id } = filter.before;
+    query = query.or(
+      `created_at.lt.${createdAt},and(created_at.eq.${createdAt},id.lt.${id})`,
+    );
+  }
 
   const { data, error } = await query;
   if (error) throw error;

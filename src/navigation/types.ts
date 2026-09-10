@@ -1,4 +1,7 @@
-import { NavigatorScreenParams } from '@react-navigation/native';
+import {
+  CompositeScreenProps,
+  NavigatorScreenParams,
+} from '@react-navigation/native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -12,34 +15,41 @@ export type RootTabParamList = {
   Map: { focusFieldId?: string; openCard?: boolean } | undefined;
   Create: undefined;
   Placeholder: undefined;
-  Profile: NavigatorScreenParams<ProfileStackParamList> | undefined;
+  /** `refresh` — после создания поста мастером: перечитать ленту «Мои посты». */
+  Profile: { refresh?: boolean } | undefined;
 };
 
-export type HomeScreenProps = BottomTabScreenProps<RootTabParamList, 'Home'>;
+/**
+ * Стек над таб-навигатором: детальные экраны поста доступны и с «Главной», и с
+ * «Профиля», поэтому подняты сюда (а не в стек одной вкладки).
+ */
+export type AppStackParamList = {
+  Tabs: NavigatorScreenParams<RootTabParamList> | undefined;
+  PostDetail: { postId: string };
+  EditPost: { postId: string };
+};
+
+/** Экраны вкладок, которым нужен переход в `AppStack` (PostDetail/EditPost). */
+type TabScreenProps<T extends keyof RootTabParamList> = CompositeScreenProps<
+  BottomTabScreenProps<RootTabParamList, T>,
+  NativeStackScreenProps<AppStackParamList>
+>;
+
+export type HomeScreenProps = TabScreenProps<'Home'>;
 export type MapScreenProps = BottomTabScreenProps<RootTabParamList, 'Map'>;
 export type CreateScreenProps = BottomTabScreenProps<RootTabParamList, 'Create'>;
 export type PlaceholderScreenProps = BottomTabScreenProps<
   RootTabParamList,
   'Placeholder'
 >;
-export type ProfileScreenProps = BottomTabScreenProps<RootTabParamList, 'Profile'>;
+export type ProfileScreenProps = TabScreenProps<'Profile'>;
 
-export type ProfileStackParamList = {
-  ProfileMain: undefined;
-  PostDetail: { postId: string };
-  EditPost: { postId: string };
-};
-
-export type ProfileMainScreenProps = NativeStackScreenProps<
-  ProfileStackParamList,
-  'ProfileMain'
->;
 export type PostDetailScreenProps = NativeStackScreenProps<
-  ProfileStackParamList,
+  AppStackParamList,
   'PostDetail'
 >;
 export type EditPostScreenProps = NativeStackScreenProps<
-  ProfileStackParamList,
+  AppStackParamList,
   'EditPost'
 >;
 

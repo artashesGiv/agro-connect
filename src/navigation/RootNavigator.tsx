@@ -5,7 +5,7 @@ import { View } from 'react-native';
 import { AuthNavigator } from '../features/auth';
 import { useAuth } from '@/services/auth';
 import { appTheme, navigationTheme } from '@/theme';
-import { MainTabs } from './MainTabs';
+import { AppNavigator } from './AppNavigator';
 
 /**
  * Гейт авторизации. Пока `status === 'loading'` — восстанавливаем сессию
@@ -26,7 +26,7 @@ export function RootNavigator() {
   return (
     <NavigationContainer theme={navigationTheme}>
       <StatusBar style="dark" />
-      {status === 'authenticated' ? <MainTabs /> : <AuthNavigator />}
+      {status === 'authenticated' ? <AppNavigator /> : <AuthNavigator />}
     </NavigationContainer>
   );
 }
