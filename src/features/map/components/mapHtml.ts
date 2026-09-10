@@ -246,13 +246,22 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
       var fieldMarkers = [];
       var drawing = null;
       var drawingLoad = null;
+      /**
+       * terra-draw шлёт 'finish' не только на замыкание контура, но и после
+       * каждого перетаскивания вершины в режиме выбора. Фаза правки должна
+       * начаться ровно один раз, иначе тумблер сбрасывается сам собой.
+       */
+      var contourClosed = false;
 
       map.on('styleload', function () {
         // Слой добавляем один раз; данные в него приезжают позже, через setFields.
         map.addLayer({
           id: 'app-fields-polygons',
           type: 'polygon',
-          filter: ['==', ['source-attr', 'purpose'], FIELDS_PURPOSE],
+          // Именно 'match' + 'sourceAttr': это документированная 2GIS форма
+          // фильтра по атрибутам источника. Оператор '==' против source-attr
+          // проходит типизацию, но полигоны с ним не отрисовываются.
+          filter: ['match', ['sourceAttr', 'purpose'], [FIELDS_PURPOSE], true, false],
           style: {
             color: config.palette.fieldFill,
             strokeColor: config.palette.fieldStroke,
@@ -438,6 +447,8 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
               // Замыкание контура (тапом по замыкающей точке) сразу переводит
               // в фазу правки: создать вторую фигуру после этого нечем.
               drawing.on('finish', function (id) {
+                if (contourClosed) return;
+                contourClosed = true;
                 try {
                   drawing.setMode('select');
                   drawing.selectFeature(id);
@@ -445,6 +456,7 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
                 send({ type: 'contour-closed' });
               });
             }
+            contourClosed = false;
             drawing.start();
             drawing.setMode('polygon');
             map.unblockInteraction();
@@ -456,6 +468,7 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
         restartPolygon: function () {
           if (!drawing) return;
           try {
+            contourClosed = false;
             drawing.clear();
             drawing.setMode('polygon');
             map.unblockInteraction();
@@ -506,6 +519,7 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
         },
 
         cancelDrawing: function () {
+          contourClosed = false;
           if (drawing) {
             // Отдельные try: если clear() бросит, stop() всё равно должен
             // выполниться — иначе режим останется активным.

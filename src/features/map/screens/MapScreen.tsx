@@ -52,7 +52,7 @@ export default function MapScreen() {
   const { user, profile } = useAuth();
   const mapRef = useRef<MapGLViewHandle>(null);
   const { locate } = useCurrentLocation();
-  const { fields, reload } = useFields();
+  const { fields, error: fieldsError, reload } = useFields();
 
   const [mode, setMode] = useState<Mode>('idle');
   const [menuVisible, setMenuVisible] = useState(false);
@@ -84,9 +84,23 @@ export default function MapScreen() {
     }
   }, [locate]);
 
+  // Вкладка смонтирована с самого старта приложения (`lazy: false`), поэтому
+  // поля тянем сразу при монтировании — к моменту перехода они уже на карте.
+  const loadedOnMountRef = useRef(false);
+  useEffect(() => {
+    loadedOnMountRef.current = true;
+    void reload();
+  }, [reload]);
+
   useFocusEffect(
     useCallback(() => {
-      void reload();
+      // Первый фокус пропускаем: эффект монтирования уже сходил за полями,
+      // и второй запрос подряд был бы просто лишним.
+      if (loadedOnMountRef.current) {
+        loadedOnMountRef.current = false;
+      } else {
+        void reload();
+      }
       // Во время создания камеру не трогаем: незаконченный контур уехал бы
       // за экран.
       if (modeRef.current === 'idle') void goToUser();
@@ -140,12 +154,12 @@ export default function MapScreen() {
   }, []);
 
   const toggleVertexEditing = useCallback(() => {
-    setEditingVertices((current) => {
-      const next = !current;
-      mapRef.current?.setEditInteraction(next);
-      return next;
-    });
-  }, []);
+    // Побочный эффект намеренно снаружи updater'а: React вызывает updater
+    // дважды в dev, и инъекция скрипта уехала бы в WebView два раза.
+    const next = !editingVertices;
+    setEditingVertices(next);
+    mapRef.current?.setEditInteraction(next);
+  }, [editingVertices]);
 
   const handleMapEvent = useCallback((message: MapMessage) => {
     switch (message.type) {
@@ -217,6 +231,12 @@ export default function MapScreen() {
     },
     [draft, reload, stopDrawing, user],
   );
+
+  // Раньше `error` из `useFields` не использовался нигде: неудачная загрузка
+  // выглядела как «полей нет», и отличить одно от другого было невозможно.
+  useEffect(() => {
+    if (fieldsError) setSnack(fieldsError);
+  }, [fieldsError]);
 
   // Мемоизируем: `FieldFormDialog` сбрасывает форму при смене `defaults`, и
   // новый объект на каждый рендер затирал бы то, что пользователь печатает.
