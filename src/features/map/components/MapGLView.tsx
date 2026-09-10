@@ -11,6 +11,7 @@ import {
   editPolygonScript,
   finishPolygonScript,
   flyToScript,
+  invalidateSizeScript,
   loadDrawingScript,
   parseMapMessage,
   requestCenterScript,
@@ -48,6 +49,8 @@ export type MapGLViewHandle = {
   flyTo: (center: LngLat, zoom: number) => void;
   /** Запросить центр карты — ответ придёт сообщением `center`. */
   requestCenter: () => void;
+  /** Заставить карту перемерить контейнер. */
+  invalidateSize: () => void;
   /** Перерисовать сохранённые поля. */
   setFields: (shapes: FieldShape[]) => void;
   /** Включить или выключить реакцию на тап по сохранённому полю. */
@@ -130,12 +133,18 @@ export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function Ma
     setStatus(next);
   }, []);
 
+  /**
+   * @param fatal карта нерабочая независимо от того, успела ли она загрузиться.
+   * Без этого флага потеря WebGL-контекста или истёкший ключ давали пустой
+   * бежевый прямоугольник без единого следа: экран ошибки не показывался,
+   * потому что `ready` уже прошёл.
+   */
   const fail = useCallback(
-    (reason: string) => {
-      // Ошибки после успешной загрузки игнорируем: MapGL шлёт `error` и на
-      // единичный неподъехавший тайл, а карта при этом нарисована и работает.
-      if (statusRef.current === 'ready') return;
+    (reason: string, fatal = false) => {
       if (__DEV__) console.warn('[Карта] ' + reason);
+      // Не фатальные ошибки после загрузки игнорируем: MapGL шлёт `error` и на
+      // единичный неподъехавший тайл, а карта при этом нарисована и работает.
+      if (statusRef.current === 'ready' && !fatal) return;
       clearTimer();
       changeStatus('error');
     },
@@ -156,6 +165,7 @@ export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function Ma
     () => ({
       flyTo: (center, zoom) => run('flyTo', flyToScript(center, zoom)),
       requestCenter: () => run('requestCenter', requestCenterScript()),
+      invalidateSize: () => run('invalidateSize', invalidateSizeScript()),
       setFields: (shapes) => run('setFields', setFieldsScript(shapes)),
       setFieldTaps: (enabled) => run('setFieldTaps', setFieldTapsScript(enabled)),
       loadDrawing: () => run('loadDrawing', loadDrawingScript()),
@@ -177,7 +187,13 @@ export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function Ma
       if (!message) return;
 
       if (message.type === 'error') {
-        fail(message.message);
+        fail(message.message, message.fatal);
+        return;
+      }
+
+      if (message.type === 'warning') {
+        // Единичные сбои страницы: карта работает, но в Metro о них знать надо.
+        if (__DEV__) console.warn('[Карта] ' + message.message);
         return;
       }
 

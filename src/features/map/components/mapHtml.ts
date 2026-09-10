@@ -42,7 +42,10 @@ const TERRA_DRAW_ADAPTER_URL =
 /** Сообщения, которые страница присылает в React Native. */
 export type MapMessage =
   | { type: 'ready' }
-  | { type: 'error'; message: string }
+  /** `fatal` — карта уже была готова, но рисовать больше нечем. */
+  | { type: 'error'; message: string; fatal: boolean }
+  /** Не фатальная жалоба страницы: пишем в консоль, экран не ломаем. */
+  | { type: 'warning'; message: string }
   | { type: 'center'; center: LngLat }
   | { type: 'drawing-ready' }
   | { type: 'drawing-error'; message: string }
@@ -69,7 +72,17 @@ export function parseMapMessage(raw: string): MapMessage | null {
       case 'contour-closed':
       case 'polygon-invalid':
         return { type };
-      case 'error':
+      case 'error': {
+        const { message, fatal } = data as { message?: unknown; fatal?: unknown };
+        return {
+          type,
+          message: typeof message === 'string' ? message : 'unknown',
+          // `fatal` ставят только ошибки, пришедшие после готовности карты и
+          // означающие, что рисовать больше нечем.
+          fatal: fatal === true,
+        };
+      }
+      case 'warning':
       case 'drawing-error': {
         const { message } = data as { message?: unknown };
         return { type, message: typeof message === 'string' ? message : 'unknown' };
@@ -116,6 +129,11 @@ function readLngLat(value: unknown): LngLat | null {
  */
 export function flyToScript(center: LngLat, zoom: number): string {
   return `window.__map && window.__map.flyTo(${JSON.stringify({ center, zoom })}); true;`;
+}
+
+/** Просит карту перемерить контейнер — лечит нулевой размер при монтировании. */
+export function invalidateSizeScript(): string {
+  return 'window.__map && window.__map.invalidateSize(); true;';
 }
 
 /** Запрашивает текущий центр карты — это и есть точка под прицелом. */
@@ -249,6 +267,11 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
           key: config.key,
           center: config.center,
           zoom: config.zoom,
+          // Без этого карта запоминает размер контейнера на момент создания.
+          // Вкладка смонтирована с lazy: false, то есть WebView вполне может
+          // подняться нулевого размера — и остаться пустым бежевым
+          // прямоугольником после появления на экране.
+          enableTrackResize: true,
           // Зум-контрол в MapGL включён по умолчанию ('topRight') — оставляем.
           // Копирайт 2GIS убирать нельзя, но можно отодвинуть с кнопки рецентра.
           copyright: 'bottomLeft',
@@ -304,10 +327,23 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
         if (props.fieldId) send({ type: 'field-tap', id: String(props.fieldId) });
       });
 
-      // Событие с типом 'invalidtilekey' — это истёкший или чужой ключ.
+      /**
+       * Что действительно означает пустую карту, а что — единичный сбой.
+       * 'webglcontextlost' — контекст WebGL отобран системой, рисовать нечем.
+       * 'invalidtilekey' — ключ истёк или чужой: тайлы не приедут вообще.
+       * 'styleloaderror' — стиль не загрузился.
+       * Остальное (единичный тайл) карту не ломает и в экран ошибки не ведёт.
+       */
+      var FATAL_ERRORS = ['webglcontextlost', 'invalidtilekey', 'styleloaderror'];
+
       map.on('error', function (event) {
         var type = event && event.type ? String(event.type) : 'unknown';
-        send({ type: 'error', message: 'map-error: ' + type });
+        var message = 'map-error: ' + type;
+        if (FATAL_ERRORS.indexOf(type) !== -1) {
+          send({ type: 'error', message: message, fatal: true });
+        } else {
+          send({ type: 'warning', message: message });
+        }
       });
 
       /** Собирает terra-draw один раз на страницу; повторные вызовы бесплатны. */
@@ -420,6 +456,15 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
             easing: 'easeOutCubic',
             useHeightForAnimation: true
           });
+        },
+
+        /**
+         * Заставляет карту перемерить контейнер. Вызывается при появлении
+         * вкладки: enableTrackResize покрывает не все случаи, а лишний
+         * пересчёт размера ничего не стоит.
+         */
+        invalidateSize: function () {
+          map.invalidateSize();
         },
 
         sendCenter: function () {

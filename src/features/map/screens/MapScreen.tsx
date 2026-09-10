@@ -127,6 +127,10 @@ export default function MapScreen() {
       } else {
         void reload();
       }
+      // Вкладка монтируется скрытой (`lazy: false`), поэтому при появлении
+      // просим карту перемерить контейнер: иначе она может остаться с
+      // размером, который был у WebView до показа.
+      mapRef.current?.invalidateSize();
       // Во время создания камеру не трогаем: незаконченный контур уехал бы
       // за экран.
       if (modeRef.current === 'idle') void goToUser();
