@@ -374,6 +374,13 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
                 map: map,
                 mapgl: mapgl
               });
+              // Баг адаптера 0.4.0: setDoubleClickToZoom реализован копипастой
+              // с setDraggability и зовёт map.blockInteraction(), то есть гасит
+              // ВСЮ интерактивность карты. terra-draw вызывает его с false при
+              // старте режима — и карта перестаёт двигаться, хотя обводить поле
+              // без панорамирования невозможно. Глушим: двойной тап останется
+              // зумом во время рисования, это несравнимо меньшая беда.
+              adapter.setDoubleClickToZoom = function () {};
               drawing = new td.TerraDraw({
                 adapter: adapter,
                 modes: [
@@ -424,13 +431,15 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
         },
 
         cancelDrawing: function () {
-          if (!drawing) return;
-          try {
-            drawing.clear();
-            drawing.stop();
-          } catch (e) {
-            // Останавливать нечего — не повод ронять страницу.
+          if (drawing) {
+            // Отдельные try: если clear() бросит, stop() всё равно должен
+            // выполниться — иначе режим останется активным.
+            try { drawing.clear(); } catch (e) {}
+            try { drawing.stop(); } catch (e) {}
           }
+          // Страховка от того же бага адаптера: интерактивность карты
+          // восстанавливаем сами, а не надеемся на его бухгалтерию.
+          try { map.unblockInteraction(); } catch (e) {}
         }
       };
     })();
