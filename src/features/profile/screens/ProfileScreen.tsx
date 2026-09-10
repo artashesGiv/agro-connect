@@ -1,198 +1,311 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
-  Avatar,
   Button,
-  Dialog,
   Divider,
   IconButton,
   List,
   type MD3Theme,
-  Portal,
   Snackbar,
+  Text,
 } from 'react-native-paper';
 
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { PostCard } from '@/components/PostCard';
+import { ProfileInfo } from '@/components/ProfileInfo';
 import { useFields } from '@/hooks/useFields';
 import type { ProfileScreenProps } from '@/navigation/types';
 import { useAuth } from '@/services/auth';
 import { deleteField, type Field } from '@/services/fields';
+import { deletePost } from '@/services/posts';
 import { storage, toUserMessage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
 
+import { ProfileHeader } from '../components/ProfileHeader';
+import {
+  ProfileSectionTabs,
+  type ProfileSection,
+} from '../components/ProfileSectionTabs';
+import { useUserPosts } from '../hooks/useUserPosts';
+
+/** Подсказки для незаполненных полей своего профиля. */
+const OWN_PROFILE_PLACEHOLDERS = {
+  name: 'Укажите имя',
+  specialization: 'Укажите специализацию',
+  region: 'Укажите регион',
+};
+
+/**
+ * Вкладка «Профиль»: своя шапка (уведомления / @имя / настройки), карточка
+ * профиля (общий компонент `ProfileInfo`, данные из строки `profiles`) и
+ * переключатель секций «Мои посты / Закладки / Мои поля». «Мои посты» — реальные
+ * посты автора из ленты (`useUserPosts`), «Мои поля» — строки `fields`, которые
+ * правятся на вкладке «Карта».
+ *
+ * Экран не обёрнут в `Screen`: у него фиксированная `Appbar.Header` над скроллом —
+ * верхнюю safe-area врезку даёт она сама, нижнюю — таб-бар.
+ */
 export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
-  const { user, profile, signOut } = useAuth();
-  const { fields, loading, error, reload } = useFields();
+  const { user, profile } = useAuth();
+  const [section, setSection] = useState<ProfileSection>('posts');
+  const { posts, loading, error, reload } = useUserPosts(user?.id);
+  const {
+    fields,
+    loading: fieldsLoading,
+    error: fieldsError,
+    reload: reloadFields,
+  } = useFields();
 
-  const [pendingDelete, setPendingDelete] = useState<Field | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [pendingDeleteField, setPendingDeleteField] = useState<Field | null>(null);
+  const [deletingField, setDeletingField] = useState(false);
   const [snack, setSnack] = useState<string | null>(null);
 
-  // Поля правятся на карте, поэтому список обновляем при каждом возврате.
+  // Возврат на вкладку (после публикации поста или правки поля на карте) —
+  // перечитываем оба списка: какая секция открыта, мы не знаем заранее.
   useFocusEffect(
     useCallback(() => {
       void reload();
-    }, [reload]),
+      void reloadFields();
+    }, [reload, reloadFields]),
   );
 
-  // avatar_path хранится в БД, публичный URL строим локально.
-  const avatarUrl = profile?.avatar_path
-    ? storage.getAvatarUrl(profile.avatar_path)
-    : null;
+  const closeDeleteDialog = useCallback(() => {
+    setPendingDeleteId(null);
+    setDeleteError(null);
+  }, []);
 
-  /** Параметры чистим явно: таб помнит их между переходами. */
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pendingDeleteId) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deletePost(pendingDeleteId);
+      await reload();
+      setPendingDeleteId(null);
+    } catch (cause) {
+      setDeleteError(toUserMessage(cause));
+    } finally {
+      setDeleting(false);
+    }
+  }, [pendingDeleteId, reload]);
+
+  const confirmDeleteField = useCallback(async () => {
+    if (!pendingDeleteField) return;
+    setDeletingField(true);
+    setDeleteError(null);
+    try {
+      await deleteField(pendingDeleteField.id);
+      setPendingDeleteField(null);
+      setSnack('Поле удалено');
+      await reloadFields();
+    } catch (cause) {
+      setDeleteError(toUserMessage(cause));
+    } finally {
+      setDeletingField(false);
+    }
+  }, [pendingDeleteField, reloadFields]);
+
+  /**
+   * Переход к полю на карту. Параметры чистим явно даже когда поля нет: таб
+   * помнит их между переходами, и без этого «Добавить поле» унесло бы к
+   * последнему открытому.
+   */
   const openOnMap = useCallback(
-    (field: Field, withCard: boolean) => {
-      navigation.navigate('Map', { focusFieldId: field.id, openCard: withCard });
+    (field: Field | null, withCard: boolean) => {
+      navigation.navigate('Map', {
+        focusFieldId: field?.id,
+        openCard: field ? withCard : undefined,
+      });
     },
     [navigation],
   );
 
-  const confirmDelete = useCallback(async () => {
-    if (!pendingDelete) return;
-    setDeleting(true);
-    try {
-      await deleteField(pendingDelete.id);
-      setPendingDelete(null);
-      setSnack('Поле удалено');
-      await reload();
-    } catch (cause) {
-      setSnack(toUserMessage(cause));
-    } finally {
-      setDeleting(false);
-    }
-  }, [pendingDelete, reload]);
+  const avatarUrl = profile?.avatar_path
+    ? storage.getAvatarUrl(profile.avatar_path)
+    : undefined;
 
   return (
-    <View style={styles.container}>
+    <View style={styles.root}>
+      <ProfileHeader />
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.info}>
-          {avatarUrl ? (
-            <Avatar.Image size={72} source={{ uri: avatarUrl }} style={styles.avatar} />
-          ) : null}
-          <Text style={styles.name}>{profile?.name ?? 'Профиль'}</Text>
-          {user?.email ? <Text style={styles.email}>{user.email}</Text> : null}
-          {profile?.specialization ? (
-            <Text style={styles.meta}>{profile.specialization}</Text>
-          ) : null}
-          {profile?.region ? <Text style={styles.meta}>{profile.region}</Text> : null}
-          <Text style={styles.meta}>{`Репутация: ${profile?.reputation ?? 0}`}</Text>
-        </View>
+        <ProfileInfo
+          profile={{
+            name: profile?.name ?? undefined,
+            specialization: profile?.specialization ?? undefined,
+            region: profile?.region ?? undefined,
+            avatarUrl,
+          }}
+          placeholders={OWN_PROFILE_PLACEHOLDERS}
+        />
+        <Divider />
+        <ProfileSectionTabs value={section} onChange={setSection} />
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Мои поля</Text>
-          {fields.length > 0 ? (
-            <IconButton
-              icon="plus"
-              size={20}
-              onPress={() => navigation.navigate('Map', { focusFieldId: undefined })}
-              accessibilityLabel="Добавить поле на карте"
+        <View style={styles.section}>
+          {section === 'bookmarks' ? (
+            <Text style={styles.stateText}>Закладки</Text>
+          ) : section === 'fields' ? (
+            <FieldsSection
+              fields={fields}
+              loading={fieldsLoading}
+              error={fieldsError}
+              styles={styles}
+              errorColor={theme.colors.error}
+              onOpen={openOnMap}
+              onDelete={setPendingDeleteField}
             />
-          ) : null}
+          ) : error ? (
+            <Text style={styles.stateText}>{error}</Text>
+          ) : loading ? (
+            <ActivityIndicator style={styles.loader} />
+          ) : posts.length === 0 ? (
+            <Text style={styles.stateText}>Постов пока нет</Text>
+          ) : (
+            // .map, а не FlatList — список внутри ScrollView. Заменить на FlatList,
+            // когда постов станет много / появится пагинация.
+            posts.map((post) => (
+              <PostCard
+                key={post.id}
+                author={post.author}
+                title={post.title}
+                description={post.description}
+                images={post.images}
+                onEdit={() => {
+                  /* TODO: экран редактирования поста */
+                }}
+                onDelete={() => {
+                  setDeleteError(null);
+                  setPendingDeleteId(post.id);
+                }}
+              />
+            ))
+          )}
         </View>
-
-        {loading && fields.length === 0 ? (
-          <ActivityIndicator style={styles.listState} color={theme.colors.primary} />
-        ) : null}
-
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-        {!loading && !error && fields.length === 0 ? (
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>
-              Полей пока нет. Добавьте первое — карта откроется на вашем
-              местоположении.
-            </Text>
-            <Button
-              mode="contained"
-              icon="plus"
-              onPress={() => navigation.navigate('Map', { focusFieldId: undefined })}
-              accessibilityLabel="Добавить поле на карте"
-            >
-              Добавить поле
-            </Button>
-          </View>
-        ) : null}
-
-        {fields.map((field, index) => (
-          <View key={field.id}>
-            {index > 0 ? <Divider /> : null}
-            <List.Item
-              title={field.name}
-              description={describe(field)}
-              onPress={() => openOnMap(field, false)}
-              titleStyle={styles.itemTitle}
-              descriptionStyle={styles.itemDescription}
-              right={() => (
-                <View style={styles.itemActions}>
-                  <IconButton
-                    icon="pencil-outline"
-                    size={20}
-                    onPress={() => openOnMap(field, true)}
-                    accessibilityLabel={`Редактировать поле ${field.name}`}
-                  />
-                  <IconButton
-                    icon="trash-can-outline"
-                    size={20}
-                    iconColor={theme.colors.error}
-                    onPress={() => setPendingDelete(field)}
-                    accessibilityLabel={`Удалить поле ${field.name}`}
-                  />
-                </View>
-              )}
-            />
-          </View>
-        ))}
-
-        <Button
-          mode="contained"
-          buttonColor={theme.colors.errorContainer}
-          textColor={theme.colors.onErrorContainer}
-          onPress={signOut}
-          style={styles.signOutButton}
-          accessibilityLabel="Выйти из аккаунта"
-        >
-          Выйти
-        </Button>
       </ScrollView>
 
-      <Portal>
-        <Dialog
-          visible={pendingDelete !== null}
-          onDismiss={deleting ? () => {} : () => setPendingDelete(null)}
-          dismissable={!deleting}
-        >
-          <Dialog.Title>Удалить поле?</Dialog.Title>
-          <Dialog.Content>
-            <Text style={styles.meta}>
-              {`«${pendingDelete?.name ?? ''}» будет удалено безвозвратно.`}
-            </Text>
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setPendingDelete(null)} disabled={deleting}>
-              Отмена
-            </Button>
-            <Button
-              onPress={() => void confirmDelete()}
-              loading={deleting}
-              disabled={deleting}
-              textColor={theme.colors.error}
-            >
-              Удалить
-            </Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
+      <ConfirmDialog
+        visible={pendingDeleteId !== null}
+        icon="trash-can-outline"
+        title="Удалить пост?"
+        message="Это действие нельзя отменить."
+        confirmLabel="Удалить"
+        destructive
+        loading={deleting}
+        error={deleteError}
+        onConfirm={handleConfirmDelete}
+        onCancel={closeDeleteDialog}
+      />
+
+      <ConfirmDialog
+        visible={pendingDeleteField !== null}
+        icon="trash-can-outline"
+        title="Удалить поле?"
+        message={`«${pendingDeleteField?.name ?? ''}» будет удалено безвозвратно.`}
+        confirmLabel="Удалить"
+        destructive
+        loading={deletingField}
+        error={deleteError}
+        onConfirm={confirmDeleteField}
+        onCancel={() => {
+          setPendingDeleteField(null);
+          setDeleteError(null);
+        }}
+      />
 
       <Snackbar visible={snack !== null} onDismiss={() => setSnack(null)} duration={4000}>
         {snack ?? ''}
       </Snackbar>
+    </View>
+  );
+}
+
+type FieldsSectionProps = {
+  fields: Field[];
+  loading: boolean;
+  error: string | null;
+  styles: ReturnType<typeof makeStyles>;
+  errorColor: string;
+  onOpen: (field: Field | null, withCard: boolean) => void;
+  onDelete: (field: Field) => void;
+};
+
+/** Секция «Мои поля»: список, переход на карту и удаление. */
+function FieldsSection({
+  fields,
+  loading,
+  error,
+  styles,
+  errorColor,
+  onOpen,
+  onDelete,
+}: FieldsSectionProps) {
+  if (error) return <Text style={styles.stateText}>{error}</Text>;
+  if (loading && fields.length === 0) return <ActivityIndicator style={styles.loader} />;
+
+  if (fields.length === 0) {
+    return (
+      <View style={styles.empty}>
+        <Text style={styles.emptyText}>
+          Полей пока нет. Добавьте первое — карта откроется на вашем местоположении.
+        </Text>
+        <Button
+          mode="contained"
+          icon="plus"
+          onPress={() => onOpen(null, false)}
+          accessibilityLabel="Добавить поле на карте"
+        >
+          Добавить поле
+        </Button>
+      </View>
+    );
+  }
+
+  return (
+    <View>
+      <View style={styles.fieldsHeader}>
+        <IconButton
+          icon="plus"
+          size={20}
+          onPress={() => onOpen(null, false)}
+          accessibilityLabel="Добавить поле на карте"
+        />
+      </View>
+      {fields.map((field, index) => (
+        <View key={field.id}>
+          {index > 0 ? <Divider /> : null}
+          <List.Item
+            title={field.name}
+            description={describe(field)}
+            onPress={() => onOpen(field, false)}
+            right={() => (
+              <View style={styles.itemActions}>
+                <IconButton
+                  icon="pencil-outline"
+                  size={20}
+                  onPress={() => onOpen(field, true)}
+                  accessibilityLabel={`Редактировать поле ${field.name}`}
+                />
+                <IconButton
+                  icon="trash-can-outline"
+                  size={20}
+                  iconColor={errorColor}
+                  onPress={() => onDelete(field)}
+                  accessibilityLabel={`Удалить поле ${field.name}`}
+                />
+              </View>
+            )}
+          />
+        </View>
+      ))}
     </View>
   );
 }
@@ -205,76 +318,46 @@ function describe(field: Field): string {
 
 const makeStyles = (theme: MD3Theme) =>
   StyleSheet.create({
-    container: {
+    root: {
       flex: 1,
       backgroundColor: theme.colors.background,
     },
     content: {
       flexGrow: 1,
-      paddingHorizontal: 16,
-      paddingVertical: 24,
+      paddingBottom: 24,
     },
-    info: {
-      marginBottom: 24,
+    section: {
+      flex: 1,
     },
-    name: {
-      color: theme.colors.onBackground,
-      fontSize: 28,
-      fontWeight: '800',
-      marginBottom: 8,
+    loader: {
+      marginTop: 32,
     },
-    email: {
+    stateText: {
       color: theme.colors.onSurfaceVariant,
-      fontSize: 15,
+      fontSize: 16,
+      textAlign: 'center',
+      marginTop: 32,
+      paddingHorizontal: 24,
     },
-    meta: {
-      color: theme.colors.onSurfaceVariant,
-      fontSize: 14,
-      marginTop: 4,
-    },
-    avatar: {
-      marginBottom: 12,
-    },
-    sectionHeader: {
+    fieldsHeader: {
       flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    sectionTitle: {
-      color: theme.colors.onBackground,
-      fontSize: 18,
-      fontWeight: '700',
-    },
-    listState: {
-      marginVertical: 16,
-    },
-    errorText: {
-      color: theme.colors.error,
-      fontSize: 14,
-      marginVertical: 12,
-    },
-    empty: {
-      alignItems: 'flex-start',
-      gap: 12,
-      marginTop: 8,
-      marginBottom: 16,
-    },
-    emptyText: {
-      color: theme.colors.onSurfaceVariant,
-      fontSize: 14,
-      lineHeight: 20,
-    },
-    itemTitle: {
-      color: theme.colors.onBackground,
-    },
-    itemDescription: {
-      color: theme.colors.onSurfaceVariant,
+      justifyContent: 'flex-end',
+      paddingRight: 4,
     },
     itemActions: {
       flexDirection: 'row',
       alignItems: 'center',
     },
-    signOutButton: {
-      marginTop: 'auto',
+    empty: {
+      alignItems: 'center',
+      gap: 16,
+      marginTop: 32,
+      paddingHorizontal: 24,
+    },
+    emptyText: {
+      color: theme.colors.onSurfaceVariant,
+      fontSize: 16,
+      lineHeight: 22,
+      textAlign: 'center',
     },
   });

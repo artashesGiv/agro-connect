@@ -1,5 +1,15 @@
-import { ScreenPlaceholder } from '../../../components/ScreenPlaceholder';
+import { CreatePostProvider } from '../forms/CreatePostProvider';
+import { CreateNavigator } from '../navigation/CreateNavigator';
 
+/**
+ * Вкладка «Создать» — контейнер мастера: одна форма (`CreatePostProvider`) на все
+ * шаги вложенного навигатора. `headerShown: false` у вкладки — шапку рисует
+ * `CreateStepLayout`.
+ */
 export default function CreateScreen() {
-  return <ScreenPlaceholder text="Создание — в разработке" />;
+  return (
+    <CreatePostProvider>
+      <CreateNavigator />
+    </CreatePostProvider>
+  );
 }

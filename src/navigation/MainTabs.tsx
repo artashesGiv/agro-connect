@@ -60,7 +60,7 @@ export function MainTabs() {
         component={CreateScreen}
         options={{
           title: 'Создать',
-          headerShown: true,
+          headerShown: false,
           tabBarButton: (props) => <CreateTabButton {...props} />,
         }}
       />
@@ -72,7 +72,7 @@ export function MainTabs() {
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{ title: 'Профиль', headerShown: true }}
+        options={{ title: 'Профиль', headerShown: false }}
       />
     </Tab.Navigator>
   );

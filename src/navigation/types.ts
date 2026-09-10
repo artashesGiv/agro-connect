@@ -49,3 +49,32 @@ export type RegisterPasswordScreenProps = NativeStackScreenProps<
   RegisterStackParamList,
   'RegisterPassword'
 >;
+
+export type CreateStackParamList = {
+  CreateTitle: undefined;
+  CreateBody: undefined;
+  CreatePhotos: undefined;
+  CreateField: undefined;
+  CreatePreview: undefined;
+};
+
+export type CreateTitleScreenProps = NativeStackScreenProps<
+  CreateStackParamList,
+  'CreateTitle'
+>;
+export type CreateBodyScreenProps = NativeStackScreenProps<
+  CreateStackParamList,
+  'CreateBody'
+>;
+export type CreatePhotosScreenProps = NativeStackScreenProps<
+  CreateStackParamList,
+  'CreatePhotos'
+>;
+export type CreateFieldScreenProps = NativeStackScreenProps<
+  CreateStackParamList,
+  'CreateField'
+>;
+export type CreatePreviewScreenProps = NativeStackScreenProps<
+  CreateStackParamList,
+  'CreatePreview'
+>;

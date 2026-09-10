@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { getFeed, type FeedFilter, type FeedPost } from '@/services/posts';
 import { toUserMessage } from '@/services/supabase';
-
-import { getFeed, type FeedFilter, type FeedPost } from '../repository/postsRepository';
 
 type UseFeedResult = {
   posts: FeedPost[];
@@ -19,19 +18,21 @@ export function useFeed(filter: FeedFilter = {}): UseFeedResult {
 
   // Фильтр приходит объектом-литералом, поэтому в зависимости кладём его поля,
   // а не сам объект — иначе эффект перезапускался бы на каждый рендер.
-  const { cropId, fieldId, postTypeCode, limit, before } = filter;
+  const { cropId, fieldId, postTypeCode, authorId, limit, before } = filter;
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setPosts(await getFeed({ cropId, fieldId, postTypeCode, limit, before }));
+      setPosts(
+        await getFeed({ cropId, fieldId, postTypeCode, authorId, limit, before }),
+      );
     } catch (cause) {
       setError(toUserMessage(cause));
     } finally {
       setLoading(false);
     }
-  }, [cropId, fieldId, postTypeCode, limit, before]);
+  }, [cropId, fieldId, postTypeCode, authorId, limit, before]);
 
   useEffect(() => {
     void load();

@@ -5,8 +5,8 @@ import { Icon } from '../components/Icon';
 import { useAppTheme } from '../theme';
 
 /**
- * Центральная кнопка навбара — крупный круглый «+». В одну линию с остальными
- * вкладками (без выступа над панелью).
+ * Центральная кнопка навбара — крупный «+» в слегка овальной кнопке. В одну
+ * линию с остальными вкладками (без выступа над панелью).
  */
 export function CreateTabButton({ onPress, accessibilityState }: BottomTabBarButtonProps) {
   const theme = useAppTheme();
@@ -24,7 +24,7 @@ export function CreateTabButton({ onPress, accessibilityState }: BottomTabBarBut
           pressed && styles.pressed,
         ]}
       >
-        <Icon name="plus" color={theme.colors.onPrimary} size={30} />
+        <Icon name="plus" color={theme.colors.onPrimary} size={28} />
       </Pressable>
     </View>
   );
@@ -37,9 +37,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   button: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 58,
+    height: 46,
+    borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
   },
