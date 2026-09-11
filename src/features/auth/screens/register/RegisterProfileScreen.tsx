@@ -3,6 +3,7 @@ import { useFormContext } from 'react-hook-form';
 import type { RegisterProfileScreenProps } from '@/navigation/types';
 
 import { FormTextInput } from '@/components/FormTextInput';
+import { RegionSelect } from '@/components/RegionSelect';
 import { RegisterStepLayout } from '../../components/RegisterStepLayout';
 import {
   REGISTER_STEP_FIELDS,
@@ -19,8 +20,9 @@ export default function RegisterProfileScreen({
     navigation.navigate('RegisterPassword');
   };
 
-  // Поля повторяют колонки `profiles`. Справочников под специализацию и регион
-  // в схеме БД нет, поэтому пока свободный ввод.
+  // Поля повторяют колонки `profiles`. Справочника под специализацию в схеме БД
+  // нет, поэтому она остаётся свободным вводом; регион — выбор из списка
+  // регионов РФ (см. RegionSelect).
   return (
     <RegisterStepLayout
       step={2}
@@ -42,12 +44,7 @@ export default function RegisterProfileScreen({
         label="Специализация"
         placeholder="Например, растениеводство"
       />
-      <FormTextInput
-        control={control}
-        name="region"
-        label="Регион"
-        placeholder="Например, Краснодарский край"
-      />
+      <RegionSelect control={control} name="region" label="Регион" />
     </RegisterStepLayout>
   );
 }

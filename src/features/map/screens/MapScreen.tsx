@@ -5,6 +5,7 @@ import { Button, IconButton, type MD3Theme, Menu, Snackbar, Surface } from 'reac
 
 import { AppHeader } from '@/components/AppHeader';
 import { Icon } from '@/components/Icon';
+import { isKnownRegion } from '@/constants/regions';
 import { useAuth } from '@/services/auth';
 import { toUserMessage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
@@ -390,7 +391,12 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
   const formDefaults = useMemo(() => {
     if (pending && pending.kind !== 'create') {
       const target = fields.find((item) => item.id === pending.id);
-      if (target) return { name: target.name, region: target.region ?? '' };
+      if (target) {
+        return {
+          name: target.name,
+          region: isKnownRegion(target.region) ? target.region : '',
+        };
+      }
     }
     return fieldDefaults(fields.length, profile?.region ?? null);
   }, [fields, pending, profile?.region]);

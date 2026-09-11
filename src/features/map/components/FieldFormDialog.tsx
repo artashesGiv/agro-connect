@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { Button, Dialog, HelperText, Portal } from 'react-native-paper';
 
 import { FormTextInput } from '@/components/FormTextInput';
+import { RegionSelect } from '@/components/RegionSelect';
 
 import { fieldSchema, type FieldFormValues } from '../schemas/fieldSchema';
 
@@ -55,7 +56,7 @@ export function FieldFormDialog({
         <Dialog.Title>{title}</Dialog.Title>
         <Dialog.Content>
           <FormTextInput control={control} name="name" label="Название" autoFocus />
-          <FormTextInput control={control} name="region" label="Регион" />
+          <RegionSelect control={control} name="region" label="Регион" clearable />
           {error ? (
             // Показываем прямо здесь, а не снекбаром: снекбар ушёл бы под
             // диалог, а нарисованное поле мы намеренно не сбрасываем.

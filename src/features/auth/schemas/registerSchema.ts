@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { isKnownRegion } from '@/constants/regions';
+
 /**
  * Схема мастера регистрации (все 3 шага в одном объекте). Каждый шаг валидирует
  * только свои поля через `trigger(REGISTER_STEP_FIELDS.x)` перед переходом.
@@ -12,7 +14,10 @@ export const registerSchema = z
     email: z.string().trim().min(1, 'Введите email').email('Некорректный email'),
     name: z.string().trim().min(1, 'Введите имя'),
     specialization: z.string().trim().min(1, 'Укажите специализацию'),
-    region: z.string().trim().min(1, 'Укажите регион'),
+    region: z
+      .string()
+      .min(1, 'Укажите регион')
+      .refine((value): boolean => isKnownRegion(value), { message: 'Укажите регион' }),
     password: z.string().min(6, 'Минимум 6 символов'),
     confirmPassword: z.string().min(1, 'Повторите пароль'),
   })
