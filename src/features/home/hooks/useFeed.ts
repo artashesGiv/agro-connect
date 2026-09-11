@@ -19,6 +19,7 @@ export type FeedItem = {
   postTypeCode: string;
   createdAt: string;
   isMine: boolean;
+  fieldId: string | null;
   author: { nickname: string; avatarUrl?: string };
   title: string;
   description?: string;
@@ -40,6 +41,7 @@ function mapItem(
     postTypeCode: post.post_types?.code ?? 'field_update',
     createdAt: post.created_at,
     isMine: viewerId ? post.profiles?.id === viewerId : false,
+    fieldId: post.field_id,
     author: {
       nickname: post.profiles?.name ?? 'без имени',
       avatarUrl: post.profiles?.avatar_path

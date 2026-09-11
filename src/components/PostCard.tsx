@@ -77,6 +77,7 @@ type PostCardProps = {
   commentCount?: number;
   onComment?: () => void;
   onBookmark?: () => void;
+  /** Без обработчика кнопка «На карте» не рисуется — у поста нет привязанного поля. */
   onMap?: () => void;
   /** Если передан `onEdit` или `onDelete` — в углу поста появляются «три точки». */
   onEdit?: () => void;
@@ -226,7 +227,7 @@ export function PostCard({
           active={bookmarked}
           onPress={onBookmark}
         />
-        <PostAction icon="map-outline" label="На карте" onPress={onMap} />
+        {onMap ? <PostAction icon="map-outline" label="На карте" onPress={onMap} /> : null}
       </View>
     </View>
   );

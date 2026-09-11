@@ -41,6 +41,8 @@ export const createPostSchema = z.object({
   title: z.string().trim().min(1, 'Введите заголовок'),
   body: z.string().trim().max(4000, 'Слишком длинное описание'),
   photos: z.array(photoItemSchema),
+  /** id строки `fields` — необязательная привязка поста к своему полю. */
+  fieldId: z.string().nullable(),
 });
 
 export type CreatePostFormValues = z.infer<typeof createPostSchema>;
@@ -50,6 +52,7 @@ export const createPostDefaults: CreatePostFormValues = {
   title: '',
   body: '',
   photos: [],
+  fieldId: null,
 };
 
 export const CREATE_STEP_FIELDS = {

@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { StyleSheet, View } from 'react-native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { HelperText } from 'react-native-paper';
+import { HelperText, Text } from 'react-native-paper';
 
+import { Icon } from '@/components/Icon';
 import { PostCard } from '@/components/PostCard';
+import { useFields } from '@/hooks/useFields';
 import type {
   CreatePreviewScreenProps,
   RootTabParamList,
@@ -12,6 +14,7 @@ import type {
 import { useAuth } from '@/services/auth';
 import { createPostWithMedia, updatePostWithMedia } from '@/services/posts';
 import { storage, toUserMessage } from '@/services/supabase';
+import { useAppTheme } from '@/theme';
 
 import { CreateStepLayout } from '../../components/CreateStepLayout';
 import { useCreatePostMeta } from '../../forms/CreatePostProvider';
@@ -20,16 +23,24 @@ import type { CreatePostFormValues } from '../../schemas/createPostSchema';
 export default function CreatePreviewScreen({
   navigation,
 }: CreatePreviewScreenProps) {
+  const theme = useAppTheme();
   const { user, profile } = useAuth();
   const { postId } = useCreatePostMeta();
   const isEdit = postId !== null;
   const { handleSubmit, formState, reset, getValues } =
     useFormContext<CreatePostFormValues>();
   const [error, setError] = useState<string | null>(null);
+  const { fields, reload: reloadFields } = useFields();
+  // Список полей грузится только тут: шаг 4 держит свою копию хука и не
+  // делится состоянием с этим экраном.
+  useEffect(() => {
+    void reloadFields();
+  }, [reloadFields]);
 
   // Значения уже собраны на прошлых шагах и на этом экране не меняются —
   // снимок через getValues достаточно.
   const values = getValues();
+  const selectedField = fields.find((field) => field.id === values.fieldId) ?? null;
   const avatarUrl = profile?.avatar_path
     ? storage.getAvatarUrl(profile.avatar_path)
     : undefined;
@@ -44,6 +55,7 @@ export default function CreatePreviewScreen({
       postTypeCode: data.postTypeCode,
       title: data.title,
       body: data.body,
+      fieldId: data.fieldId,
     };
     const newPhotos = data.photos
       .filter((photo) => photo.kind === 'new')
@@ -95,6 +107,14 @@ export default function CreatePreviewScreen({
           )}
         />
       </View>
+      {selectedField ? (
+        <View style={styles.fieldRow}>
+          <Icon name="map-marker-outline" size={16} color={theme.colors.onSurfaceVariant} />
+          <Text style={[styles.fieldText, { color: theme.colors.onSurfaceVariant }]}>
+            {selectedField.name}
+          </Text>
+        </View>
+      ) : null}
       {error ? (
         <HelperText type="error" visible style={styles.error}>
           {error}
@@ -107,6 +127,15 @@ export default function CreatePreviewScreen({
 const styles = StyleSheet.create({
   previewWrap: {
     marginHorizontal: -24,
+  },
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+  },
+  fieldText: {
+    fontSize: 13,
   },
   error: {
     paddingHorizontal: 0,

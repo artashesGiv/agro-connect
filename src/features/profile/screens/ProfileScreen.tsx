@@ -177,13 +177,14 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
   /**
    * Переход к полю на карту. Параметры чистим явно даже когда поля нет: таб
    * помнит их между переходами, и без этого «Добавить поле» унесло бы к
-   * последнему открытому.
+   * последнему открытому. Общий колбэк для секции «Мои поля» и кнопки
+   * «На карте» на постах.
    */
   const openOnMap = useCallback(
-    (field: Field | null, withCard: boolean) => {
+    (fieldId: string | null, withCard: boolean) => {
       navigation.navigate('Map', {
-        focusFieldId: field?.id,
-        openCard: field ? withCard : undefined,
+        focusFieldId: fieldId ?? undefined,
+        openCard: fieldId ? withCard : undefined,
       });
     },
     [navigation],
@@ -251,6 +252,7 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
                   setDeleteError(null);
                   setPendingDeleteId(post.id);
                 }}
+                onMap={post.fieldId ? () => openOnMap(post.fieldId, false) : undefined}
               />
             ))
           )}
@@ -302,7 +304,7 @@ type FieldsSectionProps = {
   error: string | null;
   styles: ReturnType<typeof makeStyles>;
   errorColor: string;
-  onOpen: (field: Field | null, withCard: boolean) => void;
+  onOpen: (fieldId: string | null, withCard: boolean) => void;
   onDelete: (field: Field) => void;
 };
 
@@ -353,13 +355,13 @@ function FieldsSection({
           <List.Item
             title={field.name}
             description={describe(field)}
-            onPress={() => onOpen(field, false)}
+            onPress={() => onOpen(field.id, false)}
             right={() => (
               <View style={styles.itemActions}>
                 <IconButton
                   icon="pencil-outline"
                   size={20}
-                  onPress={() => onOpen(field, true)}
+                  onPress={() => onOpen(field.id, true)}
                   accessibilityLabel={`Редактировать поле ${field.name}`}
                 />
                 <IconButton

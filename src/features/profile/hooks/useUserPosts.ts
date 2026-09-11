@@ -17,6 +17,7 @@ export type ProfilePost = {
   id: string;
   /** `code` из справочника post_types — нужен экрану редактирования. */
   postTypeCode: string;
+  fieldId: string | null;
   author: { nickname: string; avatarUrl?: string };
   title: string;
   description?: string;
@@ -35,6 +36,7 @@ function mapPost(
   return {
     id: post.id,
     postTypeCode: post.post_types?.code ?? 'field_update',
+    fieldId: post.field_id,
     author: {
       nickname: post.profiles?.name ?? 'без имени',
       avatarUrl: post.profiles?.avatar_path

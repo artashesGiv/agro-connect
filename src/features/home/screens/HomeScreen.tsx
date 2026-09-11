@@ -74,6 +74,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     [navigation],
   );
 
+  const openFieldOnMap = useCallback(
+    (fieldId: string) => {
+      navigation.navigate('Map', { focusFieldId: fieldId, openCard: true });
+    },
+    [navigation],
+  );
+
   const [notice, setNotice] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -127,29 +134,33 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   }, [pendingDeleteId, setItems]);
 
   const renderItem = useCallback(
-    ({ item }: { item: FeedItem }) => (
-      <PostCard
-        author={item.author}
-        title={item.title}
-        description={item.description}
-        images={item.images}
-        onPress={() => openPost(item.id)}
-        reactions={item.reactions}
-        onToggleReaction={(code) => handleToggleReaction(item.id, code)}
-        commentCount={item.commentCount}
-        onComment={() => openPost(item.id)}
-        onEdit={item.isMine ? () => editPost(item.id) : undefined}
-        onDelete={
-          item.isMine
-            ? () => {
-                setDeleteError(null);
-                setPendingDeleteId(item.id);
-              }
-            : undefined
-        }
-      />
-    ),
-    [openPost, editPost, handleToggleReaction],
+    ({ item }: { item: FeedItem }) => {
+      const fieldId = item.fieldId;
+      return (
+        <PostCard
+          author={item.author}
+          title={item.title}
+          description={item.description}
+          images={item.images}
+          onPress={() => openPost(item.id)}
+          reactions={item.reactions}
+          onToggleReaction={(code) => handleToggleReaction(item.id, code)}
+          commentCount={item.commentCount}
+          onComment={() => openPost(item.id)}
+          onEdit={item.isMine ? () => editPost(item.id) : undefined}
+          onDelete={
+            item.isMine
+              ? () => {
+                  setDeleteError(null);
+                  setPendingDeleteId(item.id);
+                }
+              : undefined
+          }
+          onMap={fieldId ? () => openFieldOnMap(fieldId) : undefined}
+        />
+      );
+    },
+    [openPost, editPost, handleToggleReaction, openFieldOnMap],
   );
 
   return (

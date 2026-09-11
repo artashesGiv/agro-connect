@@ -40,6 +40,7 @@ export default function EditPostScreen({ route }: EditPostScreenProps) {
             post.post_types?.code === 'question' ? 'question' : 'field_update',
           title: post.title ?? '',
           body: post.body ?? '',
+          fieldId: post.field_id,
           photos: media
             .filter((m) => urls[m.storage_path])
             .map((m) => ({

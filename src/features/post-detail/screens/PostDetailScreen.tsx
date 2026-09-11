@@ -35,6 +35,7 @@ type PostView = {
   description?: string;
   images: string[];
   postTypeCode: string;
+  fieldId: string | null;
 };
 
 /** Формулировки зависят от типа поста: вопрос → «ответы», иначе → «комментарии». */
@@ -113,6 +114,7 @@ export default function PostDetailScreen({
           .map((m) => urls[m.storage_path])
           .filter((u): u is string => Boolean(u)),
         postTypeCode: fetched.post_types?.code ?? 'field_update',
+        fieldId: fetched.field_id,
       });
       setReactions(
         summarizeReactions(fetched.post_reactions ?? [], activeTypes, user?.id),
@@ -176,6 +178,16 @@ export default function PostDetailScreen({
     [editing, edit, add],
   );
 
+  const openFieldOnMap = useCallback(
+    (fieldId: string) => {
+      navigation.navigate('Tabs', {
+        screen: 'Map',
+        params: { focusFieldId: fieldId, openCard: true },
+      });
+    },
+    [navigation],
+  );
+
   const handleVote = useCallback(
     async (id: string, value: -1 | 1) => {
       try {
@@ -203,6 +215,7 @@ export default function PostDetailScreen({
   }, [pendingDeleteId, remove, editing]);
 
   const terms = post?.postTypeCode === 'question' ? TERMS.question : TERMS.post;
+  const fieldId = post?.fieldId ?? null;
 
   return (
     <SafeAreaView edges={['bottom']} style={styles.root}>
@@ -229,6 +242,7 @@ export default function PostDetailScreen({
                 reactions={reactions}
                 onToggleReaction={handleToggleReaction}
                 commentCount={comments.length}
+                onMap={fieldId ? () => openFieldOnMap(fieldId) : undefined}
               />
             ) : null}
 

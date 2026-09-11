@@ -163,7 +163,12 @@ export async function deletePost(id: string): Promise<void> {
  */
 export async function updatePost(
   id: string,
-  patch: { title?: string | null; body?: string | null; postTypeId?: number },
+  patch: {
+    title?: string | null;
+    body?: string | null;
+    postTypeId?: number;
+    fieldId?: string | null;
+  },
 ) {
   const { data, error } = await supabase
     .from('posts')
@@ -171,6 +176,7 @@ export async function updatePost(
       ...(patch.title !== undefined ? { title: patch.title } : {}),
       ...(patch.body !== undefined ? { body: patch.body } : {}),
       ...(patch.postTypeId !== undefined ? { post_type_id: patch.postTypeId } : {}),
+      ...(patch.fieldId !== undefined ? { field_id: patch.fieldId } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
@@ -206,6 +212,7 @@ export async function updatePostWithMedia(
     title: input.title?.trim() || null,
     body: input.body?.trim() || null,
     postTypeId: type.id,
+    fieldId: input.fieldId ?? null,
   });
 
   const { data: current, error: readError } = await supabase
@@ -262,6 +269,8 @@ export type CreatePostInput = {
   postTypeCode: string;
   title?: string | null;
   body?: string | null;
+  /** id строки `fields`; `null`/не задано — пост без привязки. */
+  fieldId?: string | null;
 };
 
 /** Приводим MIME из пикера к тому, что принимает бакет `post-media`. */
@@ -292,6 +301,7 @@ export async function createPostWithMedia(
     post_type_id: type.id,
     title: input.title?.trim() || null,
     body: input.body?.trim() || null,
+    field_id: input.fieldId ?? null,
   });
 
   if (photos.length === 0) return post.id;
