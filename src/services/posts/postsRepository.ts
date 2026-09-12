@@ -89,9 +89,11 @@ export type FeedPost = {
 };
 
 export type FeedFilter = {
-  /** crops.id — целое число, а не uuid. */
-  cropId?: number;
+  /** crops.id — целые числа, а не uuid; несколько значений — OR через `.in()`. */
+  cropIds?: number[];
   fieldId?: string;
+  /** Свободный текст: ищем в `title` и `body` через `ilike`. */
+  search?: string;
   /** `code` из справочника post_types, например 'question'. */
   postTypeCode?: string;
   /** Только посты этого автора — для вкладки «Мои посты» / чужого профиля. */
@@ -113,9 +115,13 @@ export async function getFeed(filter: FeedFilter = {}): Promise<FeedPost[]> {
     .order('id', { ascending: false })
     .limit(filter.limit ?? 20);
 
-  if (filter.cropId) query = query.eq('crop_id', filter.cropId);
+  if (filter.cropIds?.length) query = query.in('crop_id', filter.cropIds);
   if (filter.fieldId) query = query.eq('field_id', filter.fieldId);
   if (filter.authorId) query = query.eq('author_id', filter.authorId);
+  if (filter.search) {
+    const term = escapeIlikeTerm(filter.search.trim());
+    if (term) query = query.or(`title.ilike.%${term}%,body.ilike.%${term}%`);
+  }
   if (filter.postTypeCode) query = query.eq('post_types.code', filter.postTypeCode);
   if (filter.before) {
     const { createdAt, id } = filter.before;
@@ -127,6 +133,11 @@ export async function getFeed(filter: FeedFilter = {}): Promise<FeedPost[]> {
   const { data, error } = await query;
   if (error) throw error;
   return data as unknown as FeedPost[];
+}
+
+/** `%`/`_` — спецсимволы ilike, `,()` ломают синтаксис `.or()` — вырезаем. */
+function escapeIlikeTerm(term: string): string {
+  return term.replace(/[%_,()]/g, '');
 }
 
 export async function getPost(id: string): Promise<FeedPost | null> {

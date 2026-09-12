@@ -35,4 +35,6 @@ export type AuthContextValue = {
   signUp: (payload: RegisterPayload) => Promise<boolean>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  /** Проверяет текущий пароль (повторным входом), затем ставит новый. */
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 };

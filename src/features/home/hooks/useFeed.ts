@@ -59,14 +59,24 @@ function mapItem(
   };
 }
 
+export type FeedFilter = {
+  cropIds?: number[];
+  search?: string;
+};
+
 /**
  * Бесконечная лента всех постов для вкладки «Главная». Страницы аккумулируются;
  * подгрузка — keyset по `(created_at, id)`. `setItems` наружу — для оптимистичных
  * реакций и вырезания поста при удалении (как `setPosts` в `useUserPosts`).
+ *
+ * `filter` (культура/поиск) меняет тождество `fetchPage`, а значит и `loadFirst` —
+ * существующий эффект ниже перезапускает загрузку с нуля сам, без отдельного
+ * сброса курсора.
  */
-export function useFeed() {
+export function useFeed(filter: FeedFilter = {}) {
   const { user } = useAuth();
   const viewerId = user?.id;
+  const { cropIds, search } = filter;
 
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,7 +88,7 @@ export function useFeed() {
   const fetchPage = useCallback(
     async (cursor: Cursor): Promise<FeedItem[]> => {
       const [feed, activeTypes] = await Promise.all([
-        getFeed({ limit: PAGE, before: cursor }),
+        getFeed({ limit: PAGE, before: cursor, cropIds, search }),
         dictionaries.getActiveReactionTypes(),
       ]);
       const paths = feed.flatMap((post) =>
@@ -87,7 +97,7 @@ export function useFeed() {
       const urls = await storage.getPostMediaUrls(paths);
       return feed.map((post) => mapItem(post, urls, activeTypes, viewerId));
     },
-    [viewerId],
+    [viewerId, cropIds, search],
   );
 
   const loadFirst = useCallback(async () => {

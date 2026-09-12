@@ -188,6 +188,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SESSION_CHANGED', user: null });
   }, []);
 
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      const email = state.user?.email;
+      if (!email) throw new Error('Нет активной сессии.');
+      await authApi.verifyPassword(email, currentPassword);
+      await authApi.updatePassword(newPassword);
+    },
+    [state.user],
+  );
+
   const refreshProfile = useCallback(async () => {
     if (!userId) return;
     try {
@@ -208,8 +218,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
       signOut,
       refreshProfile,
+      changePassword,
     }),
-    [state, signIn, signUp, signOut, refreshProfile],
+    [state, signIn, signUp, signOut, refreshProfile, changePassword],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

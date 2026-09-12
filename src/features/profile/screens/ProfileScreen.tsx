@@ -196,7 +196,7 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
 
   return (
     <View style={styles.root}>
-      <ProfileHeader />
+      <ProfileHeader navigation={navigation} />
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -20,7 +20,13 @@ import { toggleReactionSummary } from '@/services/reactions';
 import { toUserMessage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
 
+import { CropFilterSelect } from '../components/CropFilterSelect';
+import { ExpandingSearchField } from '../components/ExpandingSearchField';
+import { useCrops } from '../hooks/useCrops';
 import { useFeed, type FeedItem } from '../hooks/useFeed';
+
+/** Пауза после последнего нажатия клавиши перед тем, как поиск уйдёт в запрос. */
+const SEARCH_DEBOUNCE_MS = 400;
 
 /**
  * Вкладка «Главная»: бесконечная лента всех постов. Первая страница 15 постов,
@@ -33,6 +39,25 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const { user } = useAuth();
   const { setReaction } = useReactions();
+  const { crops } = useCrops();
+
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [cropIds, setCropIds] = useState<number[]>([]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  const toggleSearch = useCallback(() => {
+    setSearchVisible((prev) => {
+      if (prev) setSearchInput('');
+      return !prev;
+    });
+  }, []);
+
   const {
     items,
     setItems,
@@ -45,7 +70,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     refresh,
     retry,
     syncItem,
-  } = useFeed();
+  } = useFeed({ cropIds: cropIds.length ? cropIds : undefined, search: search || undefined });
+  const filtered = Boolean(search) || cropIds.length > 0;
 
   /** id поста, открытого в PostDetail/EditPost — перечитываем его при возврате. */
   const openedRef = useRef<string | null>(null);
@@ -165,7 +191,24 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   return (
     <View style={styles.root}>
-      <AppHeader title="Главная" />
+      <AppHeader
+        titleSlot={
+          <ExpandingSearchField
+            visible={searchVisible}
+            value={searchInput}
+            onChangeText={setSearchInput}
+            title="Главная"
+          />
+        }
+        actions={[
+          {
+            icon: searchVisible ? 'close' : 'magnify',
+            onPress: toggleSearch,
+            accessibilityLabel: searchVisible ? 'Закрыть поиск' : 'Поиск',
+          },
+        ]}
+      />
+      <CropFilterSelect crops={crops} value={cropIds} onChange={setCropIds} />
 
       {loading ? (
         <ActivityIndicator style={styles.loader} />
@@ -188,7 +231,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />
           }
           ListEmptyComponent={
-            <Text style={styles.stateText}>Постов пока нет</Text>
+            <Text style={styles.stateText}>
+              {filtered ? 'Ничего не найдено' : 'Постов пока нет'}
+            </Text>
           }
           ListFooterComponent={
             loadingMore ? (

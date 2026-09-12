@@ -27,6 +27,10 @@ export type AppStackParamList = {
   Tabs: NavigatorScreenParams<RootTabParamList> | undefined;
   PostDetail: { postId: string };
   EditPost: { postId: string };
+  Settings: undefined;
+  EditProfile: undefined;
+  ChangePassword: undefined;
+  Notifications: undefined;
 };
 
 /** Экраны вкладок, которым нужен переход в `AppStack` (PostDetail/EditPost). */
@@ -51,6 +55,22 @@ export type PostDetailScreenProps = NativeStackScreenProps<
 export type EditPostScreenProps = NativeStackScreenProps<
   AppStackParamList,
   'EditPost'
+>;
+export type SettingsScreenProps = NativeStackScreenProps<
+  AppStackParamList,
+  'Settings'
+>;
+export type EditProfileScreenProps = NativeStackScreenProps<
+  AppStackParamList,
+  'EditProfile'
+>;
+export type ChangePasswordScreenProps = NativeStackScreenProps<
+  AppStackParamList,
+  'ChangePassword'
+>;
+export type NotificationsScreenProps = NativeStackScreenProps<
+  AppStackParamList,
+  'Notifications'
 >;
 
 export type AuthStackParamList = {
