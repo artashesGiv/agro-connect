@@ -8,10 +8,13 @@ import { supabase } from '@/services/supabase';
  */
 export async function triggerPostAiProcessing(postId: string): Promise<void> {
   try {
-    await supabase.functions.invoke('process-ai-post', {
+    const { data, error } = await supabase.functions.invoke('process-ai-post', {
       body: { post_id: postId },
     });
-  } catch {
-    // Фоновая ИИ-обработка необязательна для успеха публикации/редактирования.
+    // TODO(temp-debug): убрать после подтверждения схемы бэкендом (SPEC.md, п.7).
+    console.warn('[ai] process-ai-post response', { postId, data, error });
+  } catch (cause) {
+    // TODO(temp-debug): убрать после подтверждения схемы бэкендом (SPEC.md, п.7).
+    console.warn('[ai] process-ai-post threw', { postId, cause });
   }
 }
