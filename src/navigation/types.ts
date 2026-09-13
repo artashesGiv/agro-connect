@@ -27,16 +27,19 @@ export type AppStackParamList = {
   Tabs: NavigatorScreenParams<RootTabParamList> | undefined;
   PostDetail: { postId: string };
   EditPost: { postId: string };
+  /** Чужой профиль (карточка чужого поля → «Профиль»); свой профиль — вкладка. */
+  UserProfile: { userId: string };
 };
 
-/** Экраны вкладок, которым нужен переход в `AppStack` (PostDetail/EditPost). */
+/** Экраны вкладок, которым нужен переход в `AppStack` (PostDetail/EditPost/...). */
 type TabScreenProps<T extends keyof RootTabParamList> = CompositeScreenProps<
   BottomTabScreenProps<RootTabParamList, T>,
   NativeStackScreenProps<AppStackParamList>
 >;
 
 export type HomeScreenProps = TabScreenProps<'Home'>;
-export type MapScreenProps = BottomTabScreenProps<RootTabParamList, 'Map'>;
+/** Композит с `AppStack`: карточка чужого поля уводит на `UserProfile`. */
+export type MapScreenProps = TabScreenProps<'Map'>;
 export type CreateScreenProps = BottomTabScreenProps<RootTabParamList, 'Create'>;
 export type PlaceholderScreenProps = BottomTabScreenProps<
   RootTabParamList,
@@ -51,6 +54,10 @@ export type PostDetailScreenProps = NativeStackScreenProps<
 export type EditPostScreenProps = NativeStackScreenProps<
   AppStackParamList,
   'EditPost'
+>;
+export type UserProfileScreenProps = NativeStackScreenProps<
+  AppStackParamList,
+  'UserProfile'
 >;
 
 export type AuthStackParamList = {

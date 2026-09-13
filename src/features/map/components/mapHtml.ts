@@ -39,6 +39,14 @@ const TERRA_DRAW_URL = 'https://unpkg.com/terra-draw@1.33.0/dist/terra-draw.umd.
 const TERRA_DRAW_ADAPTER_URL =
   'https://unpkg.com/@2gis/mapgl-terra-draw@0.4.0/dist/mapgl-terra-draw.umd.cjs';
 
+/**
+ * Веб-шрифт MDI — те же иконки и имена, что и MaterialCommunityIcons в
+ * `@expo/vector-icons` (см. `src/constants/crops.ts`), но доступные внутри
+ * WebView как CSS-класс `mdi-<name>`. Грузится сразу (не лениво, как
+ * рисовалка): иконки культур видны сразу при открытии карты.
+ */
+const MDI_FONT_URL = 'https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css';
+
 /** Сообщения, которые страница присылает в React Native. */
 export type MapMessage =
   | { type: 'ready' }
@@ -141,10 +149,23 @@ export function requestCenterScript(): string {
   return 'window.__map && window.__map.sendCenter(); true;';
 }
 
-/** Поле на карте: контур либо одиночная точка, всегда со своим id. */
-export type FieldShape =
-  | { id: string; ring: LngLat[] }
-  | { id: string; center: LngLat };
+/**
+ * Поле на карте: контур и/или центр (у контура он тоже есть — центроид),
+ * всегда со своим id. Весь стиль посчитан заранее в `getFieldMapStyle`
+ * (`src/features/map/utils/fieldMapStyle.ts`) — своей культурой/владением, —
+ * страница только группирует фигуры по готовым цветам и применяет их.
+ */
+export type FieldShape = {
+  id: string;
+  ring?: LngLat[];
+  center?: LngLat;
+  fillColor: string;
+  strokeColor: string;
+  markerColor: string;
+  markerBorderColor: string;
+  /** MDI-имя глифа маркера без префикса `mdi-`; `null` — без иконки. */
+  icon: string | null;
+};
 
 /** Отрисовывает сохранённые поля: полигоны для контуров, точки для остальных. */
 export function setFieldsScript(shapes: FieldShape[]): string {
@@ -194,14 +215,13 @@ export function setEditInteractionScript(editing: boolean): string {
   return `window.__map && window.__map.setEditInteraction(${String(editing)}); true;`;
 }
 
-/** Цвета страницы — из темы приложения, чтобы карта не выбивалась. */
+/**
+ * Цвета страницы — из темы приложения, чтобы карта не выбивалась. Цвет самих
+ * полей/маркеров сюда не входит: он теперь целиком считается на стороне
+ * React (`getFieldMapStyle`) и приезжает готовый в каждой `FieldShape`.
+ */
 export type MapPalette = {
   background: string;
-  /** Заливка полигона поля; ожидается формат `#rrggbbaa`. */
-  fieldFill: string;
-  fieldStroke: string;
-  pointFill: string;
-  pointStroke: string;
 };
 
 /**
@@ -226,9 +246,23 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <link rel="stylesheet" href="${MDI_FONT_URL}" />
   <style>
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: ${palette.background}; }
     #map { width: 100%; height: 100%; }
+    .field-marker {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+    .field-marker .mdi {
+      font-size: 16px;
+      line-height: 1;
+    }
   </style>
   <script>
     var reported = false;
@@ -285,9 +319,35 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
         return;
       }
 
-      var FIELDS_PURPOSE = 'app-fields';
-      var fieldsSource = null;
+      /**
+       * Свой источник + свой слой на каждую встречающуюся пару цветов
+       * (заливка+обводка) — не один слой с data-driven цветом по свойству
+       * фигуры: раньше стиль слоя, посчитанный через ['get', ...], у
+       * полигонов просто не отрисовывался, без единой ошибки в консоли.
+       * 'sourceAttr' же документирован и проверен, поэтому цвет остаётся
+       * целиком статическим, а группировка — через свой purpose на пару
+       * цветов. Ключ группы — сами цвета (уже посчитаны в React), поэтому
+       * группы создаются лениво здесь, а не наперёд.
+       */
+      var polygonGroups = {};
+      /**
+       * Элементы маркеров (не только сам объект HtmlMarker) — при зуме нужно
+       * менять размер кружка и видимость иконки на уже созданных элементах,
+       * не пересоздавая маркеры заново.
+       */
       var fieldMarkers = [];
+      /**
+       * Ниже этого зума маркер-точка мельче обычного (плавно, между MIN и MAX
+       * зумом), а иконка культуры внутри вовсе скрывается — на отдалении с
+       * россыпью полей она перекрывала бы половину экрана. Кружок остаётся
+       * виден всегда (это единственное изображение точечного поля), просто
+       * меньше.
+       */
+      var MARKER_MIN_ZOOM = 9;
+      var MARKER_MAX_ZOOM = 15;
+      var MARKER_MIN_SCALE = 0.5;
+      var MARKER_ICON_MIN_ZOOM = 13;
+
       /** Во время создания и правки тап по чужому полю только мешает. */
       var fieldTapsEnabled = true;
       var drawing = null;
@@ -307,20 +367,8 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
       var contourClosed = false;
 
       map.on('styleload', function () {
-        // Слой добавляем один раз; данные в него приезжают позже, через setFields.
-        map.addLayer({
-          id: 'app-fields-polygons',
-          type: 'polygon',
-          // Именно 'match' + 'sourceAttr': это документированная 2GIS форма
-          // фильтра по атрибутам источника. Оператор '==' против source-attr
-          // проходит типизацию, но полигоны с ним не отрисовываются.
-          filter: ['match', ['sourceAttr', 'purpose'], [FIELDS_PURPOSE], true, false],
-          style: {
-            color: config.palette.fieldFill,
-            strokeColor: config.palette.fieldStroke,
-            strokeWidth: 2
-          }
-        });
+        // Слои полигонов сюда не входят: у каждой пары цветов свой слой, и
+        // он появляется лениво в setFields, когда такая пара впервые встретится.
         send({ type: 'ready' });
       });
       map.on('styleloaderror', function () {
@@ -333,6 +381,9 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
         var props = data.feature.properties || {};
         if (props.fieldId) send({ type: 'field-tap', id: String(props.fieldId) });
       });
+      // Размер маркера-точки и видимость иконки внутри зависят от зума —
+      // пересчитываем на каждое изменение, а не только при setFields.
+      map.on('zoom', applyMarkerZoomStyle);
 
       /**
        * Что действительно означает пустую карту, а что — единичный сбой.
@@ -428,10 +479,62 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
         }
       }
 
-      function bindMarkerTap(marker, id) {
-        marker.on('click', function () {
+      /**
+       * HtmlMarker — не Evented, своего 'click' у него нет: слушатель вешаем
+       * прямо на DOM-элемент, который сами же ему передаём как содержимое.
+       */
+      function bindMarkerTap(el, id) {
+        el.addEventListener('click', function () {
           if (fieldTapsEnabled) send({ type: 'field-tap', id: String(id) });
         });
+      }
+
+      /** Цветной кружок с иконкой культуры (или без неё) — маркер поля. */
+      function buildMarkerElement(shape) {
+        var el = document.createElement('div');
+        el.className = 'field-marker';
+        el.style.background = shape.markerColor;
+        el.style.border = '2px solid ' + shape.markerBorderColor;
+        var icon = null;
+        if (shape.icon) {
+          icon = document.createElement('i');
+          icon.className = 'mdi mdi-' + shape.icon;
+          icon.style.color = shape.markerBorderColor;
+          el.appendChild(icon);
+        }
+        return { el: el, icon: icon };
+      }
+
+      /**
+       * Линейная интерполяция scale по зуму, зажатая в [MIN_SCALE, 1]:
+       * зум ниже MIN — минимальный размер, выше MAX — обычный, между —
+       * плавный переход.
+       *
+       * Ниже порога иконки: у точечного поля (не iconOnly) прячем только
+       * саму иконку внутри — кружок остаётся, это его единственное
+       * изображение. А у контурного поля маркер и создавался-то только ради
+       * иконки культуры (см. условие "s.ring && !s.icon" в setFields) —
+       * если спрятать только иконку, а враппер-кружок оставить, получится
+       * ровно тот голый кружок без иконки на контуре, которого это правило и
+       * должно было избежать. Поэтому для iconOnly прячем весь враппер.
+       */
+      function applyMarkerZoomStyle() {
+        var zoom = map.getZoom();
+        var span = MARKER_MAX_ZOOM - MARKER_MIN_ZOOM;
+        var t = span > 0 ? (zoom - MARKER_MIN_ZOOM) / span : 1;
+        if (t < 0) t = 0;
+        if (t > 1) t = 1;
+        var scale = MARKER_MIN_SCALE + (1 - MARKER_MIN_SCALE) * t;
+        var showIcon = zoom >= MARKER_ICON_MIN_ZOOM;
+        for (var i = 0; i < fieldMarkers.length; i++) {
+          var entry = fieldMarkers[i];
+          entry.el.style.transform = 'scale(' + scale + ')';
+          if (entry.iconOnly) {
+            entry.el.style.display = showIcon ? '' : 'none';
+          } else if (entry.icon) {
+            entry.icon.style.display = showIcon ? '' : 'none';
+          }
+        }
       }
 
       function injectScript(src) {
@@ -490,11 +593,14 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
 
         setFields: function (shapes) {
           for (var i = 0; i < fieldMarkers.length; i++) {
-            fieldMarkers[i].destroy();
+            fieldMarkers[i].marker.destroy();
           }
           fieldMarkers = [];
 
-          var features = [];
+          // Группируем контуры по паре цветов (заливка+обводка): свой
+          // источник + свой слой на группу вместо одного общего с
+          // data-driven стилем.
+          var byColor = {};
           for (var k = 0; k < shapes.length; k++) {
             var shape = shapes[k];
             if (!shape.ring) continue;
@@ -504,7 +610,11 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
             if (first && last && (first[0] !== last[0] || first[1] !== last[1])) {
               closed.push(first);
             }
-            features.push({
+            var key = (shape.fillColor + '|' + shape.strokeColor).replace(/[^a-zA-Z0-9]/g, '');
+            if (!byColor[key]) {
+              byColor[key] = { fillColor: shape.fillColor, strokeColor: shape.strokeColor, features: [] };
+            }
+            byColor[key].features.push({
               type: 'Feature',
               // id поля едет в properties: по нему клик по полигону
               // превращается обратно в строку из базы.
@@ -512,35 +622,84 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
               geometry: { type: 'Polygon', coordinates: [closed] }
             });
           }
-          var collection = { type: 'FeatureCollection', features: features };
 
-          if (fieldsSource) {
-            fieldsSource.setData(collection);
-          } else {
-            fieldsSource = new mapgl.GeoJsonSource(map, {
-              data: collection,
-              attributes: { purpose: FIELDS_PURPOSE }
-            });
+          for (var key in byColor) {
+            var group = byColor[key];
+            var collection = { type: 'FeatureCollection', features: group.features };
+            var entry = polygonGroups[key];
+            if (entry) {
+              entry.source.setData(collection);
+            } else {
+              var purpose = 'app-fields-' + key;
+              var source = new mapgl.GeoJsonSource(map, {
+                data: collection,
+                attributes: { purpose: purpose }
+              });
+              map.addLayer({
+                id: 'app-fields-polygon-' + key,
+                type: 'polygon',
+                // Тот же проверенный фильтр, что и раньше ('sourceAttr', не
+                // 'get') — только purpose теперь свой на каждую пару цветов.
+                filter: ['match', ['sourceAttr', 'purpose'], [purpose], true, false],
+                style: {
+                  color: group.fillColor,
+                  strokeColor: group.strokeColor,
+                  strokeWidth: 2
+                }
+              });
+              polygonGroups[key] = { source: source };
+            }
+          }
+          // Цвет, которого среди текущих полей больше нет, — очищаем его
+          // источник; сам слой не убираем, он просто ничего не покажет.
+          for (var existingKey in polygonGroups) {
+            if (!byColor[existingKey]) {
+              polygonGroups[existingKey].source.setData({ type: 'FeatureCollection', features: [] });
+            }
           }
 
-          // Поля без контура рисуем кружком: он одинакового размера на любом
-          // зуме и не требует регистрировать иконку. Клик у CircleMarker свой,
-          // мимо targetData, поэтому подписываемся на каждый.
+          // ВРЕМЕННО: диагностика — почему у некоторых культур на контуре не
+          // появляется иконка. Убрать после починки.
+          var debugRingInfo2 = [];
+          for (var d2 = 0; d2 < shapes.length; d2++) {
+            if (shapes[d2].ring) {
+              debugRingInfo2.push(
+                shapes[d2].id.slice(0, 8) +
+                  ':icon=' + shapes[d2].icon +
+                  ':center=' + JSON.stringify(shapes[d2].center) +
+                  ':willSkip=' + (!shapes[d2].center || (shapes[d2].ring && !shapes[d2].icon))
+              );
+            }
+          }
+          send({ type: 'warning', message: 'DEBUG2 ring: ' + debugRingInfo2.join(' | ') });
+
+          // Маркер в центре нужен всегда для поля без контура (это его
+          // единственное изображение), а для поля с контуром — только если
+          // есть иконка культуры: иначе на каждом контуре появлялась бы
+          // лишняя точка, которой раньше не было.
           for (var j = 0; j < shapes.length; j++) {
-            if (!shapes[j].center) continue;
-            var marker = new mapgl.CircleMarker(map, {
-              coordinates: shapes[j].center,
-              radius: 8,
-              color: config.palette.pointFill,
-              strokeWidth: 2,
-              strokeColor: config.palette.pointStroke
+            var s = shapes[j];
+            if (!s.center) continue;
+            if (s.ring && !s.icon) continue;
+            var built = buildMarkerElement(s);
+            var marker = new mapgl.HtmlMarker(map, {
+              coordinates: s.center,
+              html: built.el,
+              anchor: [14, 14],
+              interactive: true,
+              // Без этого HtmlMarker участвует в авто-разрежении меток (как
+              // обычные POI-подписи), и близкие поля схлопываются до одного
+              // видимого маркера. Поля — не подписи, видны должны быть все.
+              labeling: { type: 'none' }
             });
-            // id держим в замыкании, а не вытаскиваем из события: у маркера
-            // это targetData, а не target, и полагаться на форму события ради
-            // того, что и так известно, незачем.
-            bindMarkerTap(marker, shapes[j].id);
-            fieldMarkers.push(marker);
+            // id держим в замыкании, а не читаем из события: у HtmlMarker
+            // клик — обычное DOM-событие на переданном элементе.
+            bindMarkerTap(built.el, s.id);
+            fieldMarkers.push({ marker: marker, el: built.el, icon: built.icon, iconOnly: Boolean(s.ring) });
           }
+          // Новые маркеры создаются в размере «как есть»; сразу подгоняем
+          // под текущий зум, а не ждём следующего события 'zoom'.
+          applyMarkerZoomStyle();
         },
 
         setFieldTaps: function (enabled) {

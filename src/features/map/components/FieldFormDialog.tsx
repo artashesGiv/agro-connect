@@ -1,11 +1,13 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Button, Dialog, HelperText, Portal } from 'react-native-paper';
+import { StyleSheet, View } from 'react-native';
+import { Button, Dialog, HelperText, IconButton, Portal } from 'react-native-paper';
 
 import { FormTextInput } from '@/components/FormTextInput';
 import { RegionSelect } from '@/components/RegionSelect';
 
+import { useRegionFromLocation } from '../hooks/useRegionFromLocation';
 import { fieldSchema, type FieldFormValues } from '../schemas/fieldSchema';
 
 type FieldFormDialogProps = {
@@ -38,17 +40,34 @@ export function FieldFormDialog({
   onCancel,
   onSubmit,
 }: FieldFormDialogProps) {
-  const { control, handleSubmit, reset } = useForm<FieldFormValues>({
+  const { control, handleSubmit, reset, setValue } = useForm<FieldFormValues>({
     resolver: zodResolver(fieldSchema),
     defaultValues: defaults,
     mode: 'onTouched',
   });
+  const { locate, locating } = useRegionFromLocation();
+  const [geoError, setGeoError] = useState<string | null>(null);
 
   // Диалог не размонтируется между показами, поэтому значения по умолчанию
   // (в том числе «Поле N» с новым номером) подставляем при каждом открытии.
   useEffect(() => {
-    if (visible) reset(defaults);
+    if (visible) {
+      reset(defaults);
+      setGeoError(null);
+    }
   }, [visible, defaults, reset]);
+
+  const handleLocateRegion = async () => {
+    setGeoError(null);
+    const result = await locate();
+    if (result.status === 'ok') {
+      setValue('region', result.region, { shouldValidate: true, shouldDirty: true });
+    } else if (result.status === 'denied') {
+      setGeoError('Нет доступа к геолокации — разрешите его в настройках');
+    } else {
+      setGeoError('Не удалось определить регион по геолокации');
+    }
+  };
 
   return (
     <Portal>
@@ -56,7 +75,25 @@ export function FieldFormDialog({
         <Dialog.Title>{title}</Dialog.Title>
         <Dialog.Content>
           <FormTextInput control={control} name="name" label="Название" autoFocus />
-          <RegionSelect control={control} name="region" label="Регион" clearable />
+          <View style={styles.regionRow}>
+            <View style={styles.regionField}>
+              <RegionSelect control={control} name="region" label="Регион" clearable dense />
+            </View>
+            <IconButton
+              icon="crosshairs-gps"
+              size={20}
+              loading={locating}
+              disabled={locating}
+              onPress={handleLocateRegion}
+              accessibilityLabel="Определить регион по геолокации"
+              style={styles.locateButton}
+            />
+          </View>
+          {geoError ? (
+            <HelperText type="error" visible padding="none">
+              {geoError}
+            </HelperText>
+          ) : null}
           {error ? (
             // Показываем прямо здесь, а не снекбаром: снекбар ушёл бы под
             // диалог, а нарисованное поле мы намеренно не сбрасываем.
@@ -77,3 +114,16 @@ export function FieldFormDialog({
     </Portal>
   );
 }
+
+const styles = StyleSheet.create({
+  regionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  regionField: {
+    flex: 1,
+  },
+  locateButton: {
+    marginTop: 4,
+  },
+});

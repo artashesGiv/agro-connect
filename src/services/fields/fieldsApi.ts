@@ -1,9 +1,19 @@
 import { supabase } from '@/services/supabase';
 import type { TablesUpdate } from '@/types/database.types';
 
+export type FieldCrop = { id: number; slug: string; name: string };
+
 export type Coordinates = {
   latitude: number;
   longitude: number;
+};
+
+/** Владелец поля — подмножество `profiles`, только для показа в чужой карточке. */
+export type FieldOwner = {
+  name: string | null;
+  specialization: string | null;
+  region: string | null;
+  avatar_path: string | null;
 };
 
 /**
@@ -12,10 +22,18 @@ export type Coordinates = {
  * `boundary` — внешнее кольцо полигона. Дырки (внутренние кольца) PostGIS
  * поддерживает, но приложение их не создаёт и при чтении отбрасывает: рисовать
  * их всё равно нечем.
+ *
+ * `owner` — эмбед `profiles` по `fields_owner_id_fkey`, приезжает вместе с
+ * полем одним запросом (проверено — проходит и через `.geojson()`). Нужен
+ * только для карточки чужого поля; `null`, если по какой-то причине профиль
+ * не нашёлся (сама строка `fields` при этом ещё существует).
  */
 export type Field = {
   id: string;
+  crops: FieldCrop[];
+  current_crop: FieldCrop | null;
   owner_id: string;
+  owner: FieldOwner | null;
   name: string;
   region: string | null;
   created_at: string;
@@ -31,7 +49,9 @@ export type NewField = {
   boundary?: Coordinates[] | null;
 };
 
-const SCALAR_COLUMNS = 'id, owner_id, name, region, created_at, updated_at';
+const SCALAR_COLUMNS =
+  'id, owner_id, name, region, created_at, updated_at, crops, current_crop, ' +
+  'profiles!fields_owner_id_fkey(name, specialization, region, avatar_path)';
 
 /**
  * Читаем геометрию через `Accept: application/geo+json` (метод `.geojson()`
@@ -121,6 +141,30 @@ export async function updateField(id: string, patch: FieldPatch): Promise<void> 
 
   const { error } = await supabase.from('fields').update(changes).eq('id', id);
   if (error) throw error;
+}
+
+/** Both crop values are written atomically; geometry and other metadata are untouched. */
+export async function updateFieldCrops(
+  id: string,
+  crops: FieldCrop[],
+  currentCrop: FieldCrop | null,
+): Promise<void> {
+  const unique = [...new Map(crops.map((crop) => [crop.id, crop])).values()];
+  const primary = unique.find((crop) => crop.id === currentCrop?.id) ?? unique[0] ?? null;
+  const { data, error } = await supabase.from('fields').update({
+    crops: unique,
+    current_crop: primary,
+  }).eq('id', id).select('id').maybeSingle();
+  if (error) throw error;
+  if (data) return;
+
+  // An UPDATE that matches no rows returns 200 with an empty array under RLS.
+  // Read back to distinguish an invisible field from an update policy denial.
+  const checked = await supabase.from('fields')
+    .select('id, crops, current_crop').eq('id', id).maybeSingle();
+  if (checked.error) throw checked.error;
+  if (!checked.data) throw new Error('Поле больше недоступно. Обновите список полей.');
+  throw new Error('Сервер разрешает читать поле, но не разрешил обновить культуры. Проверьте политику UPDATE для fields.');
 }
 
 export async function deleteField(id: string): Promise<void> {
@@ -233,7 +277,10 @@ function readField(feature: GeoFeature, rings: Map<string, Coordinates[]>): Fiel
 
   return {
     id,
+    crops: readCrops(row.crops),
+    current_crop: readCrops([row.current_crop])[0] ?? null,
     owner_id: ownerId,
+    owner: readOwner(row.profiles),
     name,
     region: typeof row.region === 'string' ? row.region : null,
     created_at: createdAt,
@@ -277,4 +324,28 @@ function toCoordinates(pair: unknown): Coordinates | null {
   const [longitude, latitude] = pair;
   if (typeof longitude !== 'number' || typeof latitude !== 'number') return null;
   return { latitude, longitude };
+}
+
+/** Эмбед `profiles` может прийти и объектом, и массивом из одного элемента — смотря как PostgREST решит форму связи. */
+function readOwner(value: unknown): FieldOwner | null {
+  const row = Array.isArray(value) ? value[0] : value;
+  if (typeof row !== 'object' || row === null) return null;
+  const owner = row as Record<string, unknown>;
+  return {
+    name: typeof owner.name === 'string' ? owner.name : null,
+    specialization: typeof owner.specialization === 'string' ? owner.specialization : null,
+    region: typeof owner.region === 'string' ? owner.region : null,
+    avatar_path: typeof owner.avatar_path === 'string' ? owner.avatar_path : null,
+  };
+}
+
+function readCrops(value: unknown): FieldCrop[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item: unknown) => {
+    if (typeof item !== 'object' || item === null) return [];
+    const crop = item as Record<string, unknown>;
+    return typeof crop.id === 'number' && typeof crop.slug === 'string' && typeof crop.name === 'string'
+      ? [{ id: crop.id, slug: crop.slug, name: crop.name }]
+      : [];
+  });
 }

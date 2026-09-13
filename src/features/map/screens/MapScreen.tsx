@@ -4,15 +4,18 @@ import { BackHandler, StyleSheet, Text, View } from 'react-native';
 import { Button, IconButton, type MD3Theme, Menu, Snackbar, Surface } from 'react-native-paper';
 
 import { AppHeader } from '@/components/AppHeader';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Icon } from '@/components/Icon';
 import { isKnownRegion } from '@/constants/regions';
 import { useAuth } from '@/services/auth';
 import { toUserMessage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
 
+import { FieldCropsDialog } from '../components/FieldCropsDialog';
 import { FieldCardDialog } from '../components/FieldCardDialog';
 import { FieldFormDialog } from '../components/FieldFormDialog';
 import { MapGLView, type MapGLViewHandle } from '../components/MapGLView';
+import { getFieldMapStyle } from '../utils/fieldMapStyle';
 import {
   USER_ZOOM,
   type FieldShape,
@@ -22,7 +25,14 @@ import {
 import { useCurrentLocation } from '../hooks/useCurrentLocation';
 import { useFields } from '@/hooks/useFields';
 import type { MapScreenProps } from '@/navigation/types';
-import { centroid, createField, updateField, type Coordinates } from '@/services/fields';
+import {
+  centroid,
+  createField,
+  deleteField,
+  updateField,
+  type Coordinates,
+  type Field,
+} from '@/services/fields';
 import { fieldDefaults, type FieldFormValues } from '../schemas/fieldSchema';
 
 /**
@@ -80,11 +90,16 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
   const [editingVertices, setEditingVertices] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   /** Поле, по которому тапнули: показываем карточку. */
+  const [cropsField, setCropsField] = useState<Field | null>(null);
   const [cardFieldId, setCardFieldId] = useState<string | null>(null);
   /** Поле, чью геометрию сейчас правим. `null` — создаём новое. */
   const [geometryTargetId, setGeometryTargetId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  /** Поле, которое подтверждают удалить — диалог только для своих полей. */
+  const [pendingDeleteField, setPendingDeleteField] = useState<Field | null>(null);
+  const [deletingField, setDeletingField] = useState(false);
+  const [deleteFieldError, setDeleteFieldError] = useState<string | null>(null);
   const [snack, setSnack] = useState<string | null>(null);
 
   /**
@@ -141,24 +156,30 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
   );
 
   // Полигоны и одиночные точки страница рисует по-разному, поэтому делим
-  // здесь; id едет вместе с фигурой, чтобы тап вернулся строкой из базы.
+  // здесь; id едет вместе с фигурой, чтобы тап вернулся строкой из базы. Центр
+  // едет и у контура — там он такой же центроид, что и хранится в базе —
+  // иначе не на чем показать маркер с иконкой культуры поверх заливки.
   useEffect(() => {
     const shapes: FieldShape[] = [];
     for (const field of fields) {
+      const mine = field.owner_id === user?.id;
+      const style = getFieldMapStyle(field, mine, theme);
+      const center: LngLat | undefined = field.center
+        ? [field.center.longitude, field.center.latitude]
+        : undefined;
       if (field.boundary) {
         shapes.push({
           id: field.id,
           ring: field.boundary.map((point): LngLat => [point.longitude, point.latitude]),
+          center,
+          ...style,
         });
-      } else if (field.center) {
-        shapes.push({
-          id: field.id,
-          center: [field.center.longitude, field.center.latitude],
-        });
+      } else if (center) {
+        shapes.push({ id: field.id, center, ...style });
       }
     }
     mapRef.current?.setFields(shapes);
-  }, [fields]);
+  }, [fields, user?.id, theme]);
 
   /**
    * Со вкладки профиля приходит id поля: подлетаем к нему и, если просили,
@@ -423,6 +444,29 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
     setPending({ kind: 'info', id: cardField.id });
   }, [cardField]);
 
+  const requestDeleteField = useCallback(() => {
+    if (!cardField) return;
+    setCardFieldId(null);
+    setDeleteFieldError(null);
+    setPendingDeleteField(cardField);
+  }, [cardField]);
+
+  const confirmDeleteField = useCallback(async () => {
+    if (!pendingDeleteField) return;
+    setDeletingField(true);
+    setDeleteFieldError(null);
+    try {
+      await deleteField(pendingDeleteField.id);
+      setPendingDeleteField(null);
+      setSnack('Поле удалено');
+      await reload();
+    } catch (cause) {
+      setDeleteFieldError(toUserMessage(cause));
+    } finally {
+      setDeletingField(false);
+    }
+  }, [pendingDeleteField, reload]);
+
   const creating = mode !== 'idle';
 
   return (
@@ -549,10 +593,37 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
 
       <FieldCardDialog
         field={cardField}
+        isMine={cardField?.owner_id === user?.id}
         onClose={() => setCardFieldId(null)}
+        onEditCrops={() => {
+          setCropsField(cardField);
+          setCardFieldId(null);
+        }}
         onEditInfo={editInfo}
         onEditGeometry={editGeometry}
+        onDelete={requestDeleteField}
+        onViewOwner={() => {
+          if (!cardField) return;
+          setCardFieldId(null);
+          navigation.navigate('UserProfile', { userId: cardField.owner_id });
+        }}
       />
+
+      {cropsField ? (
+        <FieldCropsDialog
+          key={cropsField.id}
+          field={cropsField}
+          onClose={() => {
+            setCardFieldId(cropsField.id);
+            setCropsField(null);
+          }}
+          onSaved={() => {
+            setCropsField(null);
+            setSnack('Культуры поля сохранены');
+            void reload();
+          }}
+        />
+      ) : null}
 
       <FieldFormDialog
         visible={pending !== null}
@@ -566,6 +637,22 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
           setSaveError(null);
         }}
         onSubmit={(values) => void handleSave(values)}
+      />
+
+      <ConfirmDialog
+        visible={pendingDeleteField !== null}
+        icon="trash-can-outline"
+        title="Удалить поле?"
+        message={`«${pendingDeleteField?.name ?? ''}» будет удалено безвозвратно.`}
+        confirmLabel="Удалить"
+        destructive
+        loading={deletingField}
+        error={deleteFieldError}
+        onConfirm={() => void confirmDeleteField()}
+        onCancel={() => {
+          setPendingDeleteField(null);
+          setDeleteFieldError(null);
+        }}
       />
 
         <Snackbar visible={snack !== null} onDismiss={() => setSnack(null)} duration={4000}>

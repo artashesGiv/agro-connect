@@ -116,16 +116,11 @@ export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function Ma
   // загрузился скрипт MapGL, надёжнее целиком, чем через reload().
   const [attempt, setAttempt] = useState(0);
 
+  // Цвет полей/маркеров сюда не входит — он теперь считается на цвет каждого
+  // поля отдельно, в `getFieldMapStyle` (по культуре и своё/чужое).
   const palette: MapPalette = useMemo(
-    () => ({
-      background: theme.colors.background,
-      // Заливка полупрозрачная: под полем должна оставаться видна карта.
-      fieldFill: `${theme.colors.primary}33`,
-      fieldStroke: theme.colors.primary,
-      pointFill: theme.colors.primary,
-      pointStroke: theme.colors.onPrimary,
-    }),
-    [theme.colors.background, theme.colors.onPrimary, theme.colors.primary],
+    () => ({ background: theme.colors.background }),
+    [theme.colors.background],
   );
 
   const html = useMemo(
