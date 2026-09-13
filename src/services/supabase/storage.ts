@@ -1,3 +1,5 @@
+import { File } from 'expo-file-system';
+
 import { supabase } from './client';
 
 export const AVATARS_BUCKET = 'avatars';
@@ -93,6 +95,10 @@ export async function getPostMediaUrls(
 
   const result: Record<string, string> = {};
   for (const item of data) {
+    if (item.error) {
+      console.error('[post-media] signing failed for', item.path, item.error);
+      continue;
+    }
     if (item.signedUrl && item.path) result[item.path] = item.signedUrl;
   }
   return result;
@@ -101,10 +107,14 @@ export async function getPostMediaUrls(
 /**
  * В React Native у файла есть только URI — читаем его в ArrayBuffer.
  * Передавать в SDK сам URI или Blob нельзя: загрузится файл нулевого размера.
+ * Читаем через `expo-file-system` (`File.arrayBuffer()`), а не `fetch(uri)`:
+ * `fetch` на некоторых Android-путях (например, кэш Expo Go с URL-кодированными
+ * символами в имени experience) не резолвит `file://` и тихо возвращает тело
+ * вида "File not found" вместо реальных байт — эти байты потом честно улетают
+ * в Storage как «фото».
  */
 async function readFile(fileUri: string): Promise<ArrayBuffer> {
-  const response = await fetch(fileUri);
-  return await response.arrayBuffer();
+  return await new File(fileUri).arrayBuffer();
 }
 
 // crypto.randomUUID в Hermes нет, а тащить expo-crypto ради имени файла незачем:

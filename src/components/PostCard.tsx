@@ -205,6 +205,7 @@ export function PostCard({
             style={styles.cover}
             resizeMode="cover"
             accessibilityIgnoresInvertColors
+            onError={(e) => console.error('[post-media] image load failed:', cover, e.nativeEvent)}
           />
         ) : null}
       </Pressable>
