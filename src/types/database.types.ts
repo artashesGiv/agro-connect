@@ -166,6 +166,117 @@ export type Database = {
           },
         ]
       }
+      // post_ai_runs / post_comments добавлены вручную по факту реального ответа
+      // process-ai-post (диагностический тестовый вызов), не сгенерированы
+      // `npm run types:supabase` — заменить официальными типами, когда бэкенд
+      // пришлёт обновлённые api-docs/database.types.ts (см. SPEC.md, п.7).
+      post_ai_runs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error: Json | null
+          feature: string
+          id: string
+          input: Json | null
+          metadata: Json | null
+          post_id: string
+          requested_by: string | null
+          result: Json | null
+          started_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error?: Json | null
+          feature?: string
+          id?: string
+          input?: Json | null
+          metadata?: Json | null
+          post_id: string
+          requested_by?: string | null
+          result?: Json | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error?: Json | null
+          feature?: string
+          id?: string
+          input?: Json | null
+          metadata?: Json | null
+          post_id?: string
+          requested_by?: string | null
+          result?: Json | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_ai_runs_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      post_comments: {
+        Row: {
+          ai_run_id: string | null
+          author_id: string | null
+          body: string
+          created_at: string
+          id: string
+          parent_comment_id: string | null
+          post_id: string
+          system_actor_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          ai_run_id?: string | null
+          author_id?: string | null
+          body: string
+          created_at?: string
+          id?: string
+          parent_comment_id?: string | null
+          post_id: string
+          system_actor_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ai_run_id?: string | null
+          author_id?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          parent_comment_id?: string | null
+          post_id?: string
+          system_actor_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_comments_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_comments_ai_run_id_fkey"
+            columns: ["ai_run_id"]
+            isOneToOne: false
+            referencedRelation: "post_ai_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       post_media: {
         Row: {
           created_at: string

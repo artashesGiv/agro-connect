@@ -43,6 +43,29 @@ export async function listComments(postId: string): Promise<CommentRow[]> {
   return data as unknown as CommentRow[];
 }
 
+/**
+ * Ответы ИИ-помощника — отдельная таблица `post_comments` (не `answers`),
+ * пишет туда только Edge Function `process-ai-post`. Автор — `system_actor_id`,
+ * без строки в `profiles`, поэтому джойна нет.
+ */
+export type AiCommentRow = {
+  id: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  system_actor_id: string | null;
+};
+
+export async function listAiComments(postId: string): Promise<AiCommentRow[]> {
+  const { data, error } = await supabase
+    .from('post_comments')
+    .select('id, body, created_at, updated_at, system_actor_id')
+    .eq('post_id', postId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
 export async function addComment(
   postId: string,
   authorId: string,

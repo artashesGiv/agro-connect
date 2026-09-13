@@ -106,35 +106,37 @@ export function CommentItem({ comment, onVote, onEdit, onDelete }: Props) {
 
         <Text style={styles.body}>{comment.body}</Text>
 
-        <View style={styles.votes}>
-          <Pressable
-            onPress={() => onVote(1)}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Полезный комментарий"
-            accessibilityState={{ selected: comment.myVote === 1 }}
-          >
-            <Icon
-              name={comment.myVote === 1 ? 'arrow-up-bold' : 'arrow-up-bold-outline'}
-              size={18}
-              color={comment.myVote === 1 ? theme.colors.primary : theme.colors.onSurfaceVariant}
-            />
-          </Pressable>
-          <Text style={styles.score}>{comment.score}</Text>
-          <Pressable
-            onPress={() => onVote(-1)}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Бесполезный комментарий"
-            accessibilityState={{ selected: comment.myVote === -1 }}
-          >
-            <Icon
-              name={comment.myVote === -1 ? 'arrow-down-bold' : 'arrow-down-bold-outline'}
-              size={18}
-              color={comment.myVote === -1 ? theme.colors.error : theme.colors.onSurfaceVariant}
-            />
-          </Pressable>
-        </View>
+        {comment.isAi ? null : (
+          <View style={styles.votes}>
+            <Pressable
+              onPress={() => onVote(1)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Полезный комментарий"
+              accessibilityState={{ selected: comment.myVote === 1 }}
+            >
+              <Icon
+                name={comment.myVote === 1 ? 'arrow-up-bold' : 'arrow-up-bold-outline'}
+                size={18}
+                color={comment.myVote === 1 ? theme.colors.primary : theme.colors.onSurfaceVariant}
+              />
+            </Pressable>
+            <Text style={styles.score}>{comment.score}</Text>
+            <Pressable
+              onPress={() => onVote(-1)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Бесполезный комментарий"
+              accessibilityState={{ selected: comment.myVote === -1 }}
+            >
+              <Icon
+                name={comment.myVote === -1 ? 'arrow-down-bold' : 'arrow-down-bold-outline'}
+                size={18}
+                color={comment.myVote === -1 ? theme.colors.error : theme.colors.onSurfaceVariant}
+              />
+            </Pressable>
+          </View>
+        )}
       </View>
     </View>
   );
