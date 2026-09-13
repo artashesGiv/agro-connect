@@ -33,17 +33,25 @@ export function CommentItem({ comment, onVote, onEdit, onDelete }: Props) {
       ) : (
         <Avatar.Icon
           size={28}
-          icon="account"
+          icon={comment.isAi ? 'robot-outline' : 'account'}
           style={styles.avatar}
-          color={theme.colors.onSurfaceVariant}
+          color={comment.isAi ? theme.colors.primary : theme.colors.onSurfaceVariant}
         />
       )}
 
       <View style={styles.main}>
         <View style={styles.headerLine}>
-          <Text style={styles.nickname} numberOfLines={1}>
-            {comment.author.nickname}
-          </Text>
+          <View style={styles.nicknameGroup}>
+            {comment.isAi ? (
+              <Icon name="robot-outline" size={14} color={theme.colors.primary} />
+            ) : null}
+            <Text
+              style={[styles.nickname, comment.isAi && { color: theme.colors.primary }]}
+              numberOfLines={1}
+            >
+              {comment.author.nickname}
+            </Text>
+          </View>
           <Text style={styles.when}>
             {formatWhen(comment.createdAt)}
             {comment.editedAt ? ' · изм.' : ''}
@@ -98,35 +106,37 @@ export function CommentItem({ comment, onVote, onEdit, onDelete }: Props) {
 
         <Text style={styles.body}>{comment.body}</Text>
 
-        <View style={styles.votes}>
-          <Pressable
-            onPress={() => onVote(1)}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Полезный комментарий"
-            accessibilityState={{ selected: comment.myVote === 1 }}
-          >
-            <Icon
-              name={comment.myVote === 1 ? 'arrow-up-bold' : 'arrow-up-bold-outline'}
-              size={18}
-              color={comment.myVote === 1 ? theme.colors.primary : theme.colors.onSurfaceVariant}
-            />
-          </Pressable>
-          <Text style={styles.score}>{comment.score}</Text>
-          <Pressable
-            onPress={() => onVote(-1)}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Бесполезный комментарий"
-            accessibilityState={{ selected: comment.myVote === -1 }}
-          >
-            <Icon
-              name={comment.myVote === -1 ? 'arrow-down-bold' : 'arrow-down-bold-outline'}
-              size={18}
-              color={comment.myVote === -1 ? theme.colors.error : theme.colors.onSurfaceVariant}
-            />
-          </Pressable>
-        </View>
+        {comment.isAi ? null : (
+          <View style={styles.votes}>
+            <Pressable
+              onPress={() => onVote(1)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Полезный комментарий"
+              accessibilityState={{ selected: comment.myVote === 1 }}
+            >
+              <Icon
+                name={comment.myVote === 1 ? 'arrow-up-bold' : 'arrow-up-bold-outline'}
+                size={18}
+                color={comment.myVote === 1 ? theme.colors.primary : theme.colors.onSurfaceVariant}
+              />
+            </Pressable>
+            <Text style={styles.score}>{comment.score}</Text>
+            <Pressable
+              onPress={() => onVote(-1)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Бесполезный комментарий"
+              accessibilityState={{ selected: comment.myVote === -1 }}
+            >
+              <Icon
+                name={comment.myVote === -1 ? 'arrow-down-bold' : 'arrow-down-bold-outline'}
+                size={18}
+                color={comment.myVote === -1 ? theme.colors.error : theme.colors.onSurfaceVariant}
+              />
+            </Pressable>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -151,6 +161,12 @@ const makeStyles = (theme: MD3Theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
+    },
+    nicknameGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      flexShrink: 1,
     },
     nickname: {
       color: theme.colors.onSurface,

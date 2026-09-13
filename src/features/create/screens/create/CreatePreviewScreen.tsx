@@ -11,6 +11,7 @@ import type {
   CreatePreviewScreenProps,
   RootTabParamList,
 } from '@/navigation/types';
+import { triggerPostAiProcessing } from '@/services/ai';
 import { useAuth } from '@/services/auth';
 import { createPostWithMedia, updatePostWithMedia } from '@/services/posts';
 import { storage, toUserMessage } from '@/services/supabase';
@@ -69,12 +70,14 @@ export default function CreatePreviewScreen({
             .filter((photo) => photo.kind === 'existing')
             .map((photo) => photo.id),
         });
+        void triggerPostAiProcessing(postId);
         // Родитель мастера — стек профиля; закрываем экран EditPost.
         navigation.getParent()?.goBack();
         return;
       }
 
-      await createPostWithMedia(user.id, input, newPhotos);
+      const createdPostId = await createPostWithMedia(user.id, input, newPhotos);
+      void triggerPostAiProcessing(createdPostId);
       reset();
       // Родитель мастера — таб-навигатор; уводим на «Профиль», где виден пост.
       // `refresh: true` — чтобы лента «Мои посты» перечитала и показала новый.

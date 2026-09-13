@@ -6,11 +6,16 @@ import { storage, toUserMessage } from '@/services/supabase';
 import {
   addComment,
   deleteComment,
+  listAiComments,
   listComments,
   setAnswerVote,
   updateComment,
+  type AiCommentRow,
   type CommentRow,
 } from '../repository/commentsRepository';
+
+/** Отображаемое имя для ответов из `post_comments` — своего профиля у ИИ нет. */
+const AI_AUTHOR_NAME = 'ИИ-помощник';
 
 export type Comment = {
   id: string;
@@ -20,6 +25,7 @@ export type Comment = {
   /** Задано, если комментарий редактировали. */
   editedAt?: string;
   isMine: boolean;
+  isAi: boolean;
   score: number;
   myVote: -1 | 0 | 1;
 };
@@ -41,8 +47,24 @@ function mapRow(row: CommentRow, viewerId: string | undefined): Comment {
     createdAt: row.created_at,
     editedAt: row.updated_at !== row.created_at ? row.updated_at : undefined,
     isMine: viewerId ? row.author_id === viewerId : false,
+    isAi: false,
     score,
     myVote: mine === 1 ? 1 : mine === -1 ? -1 : 0,
+  };
+}
+
+/** `post_comments` пока не поддерживает голоса и правки — их пишет только ИИ. */
+function mapAiRow(row: AiCommentRow): Comment {
+  return {
+    id: row.id,
+    author: { nickname: AI_AUTHOR_NAME },
+    body: row.body,
+    createdAt: row.created_at,
+    editedAt: row.updated_at !== row.created_at ? row.updated_at : undefined,
+    isMine: false,
+    isAi: true,
+    score: 0,
+    myVote: 0,
   };
 }
 
@@ -61,8 +83,15 @@ export function useComments(postId: string) {
     setLoading(true);
     setError(null);
     try {
-      const rows = await listComments(postId);
-      setComments(rows.map((row) => mapRow(row, viewerId)));
+      const [rows, aiRows] = await Promise.all([
+        listComments(postId),
+        listAiComments(postId),
+      ]);
+      const merged = [
+        ...rows.map((row) => mapRow(row, viewerId)),
+        ...aiRows.map(mapAiRow),
+      ].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      setComments(merged);
     } catch (cause) {
       setError(toUserMessage(cause));
     } finally {

@@ -1,7 +1,15 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BackHandler, StyleSheet, Text, View } from 'react-native';
-import { Button, IconButton, type MD3Theme, Menu, Snackbar, Surface } from 'react-native-paper';
+import {
+  Button,
+  IconButton,
+  type MD3Theme,
+  Menu,
+  SegmentedButtons,
+  Snackbar,
+  Surface,
+} from 'react-native-paper';
 
 import { AppHeader } from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -83,6 +91,8 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
   const { fields, error: fieldsError, reload } = useFields();
 
   const [mode, setMode] = useState<Mode>('idle');
+  /** Переключатель над картой: показывать поля всех пользователей или только свои. */
+  const [fieldsFilter, setFieldsFilter] = useState<'all' | 'mine'>('all');
   const [menuVisible, setMenuVisible] = useState(false);
   const [preparingDrawing, setPreparingDrawing] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -163,6 +173,7 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
     const shapes: FieldShape[] = [];
     for (const field of fields) {
       const mine = field.owner_id === user?.id;
+      if (fieldsFilter === 'mine' && !mine) continue;
       const style = getFieldMapStyle(field, mine, theme);
       const center: LngLat | undefined = field.center
         ? [field.center.longitude, field.center.latitude]
@@ -179,7 +190,7 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
       }
     }
     mapRef.current?.setFields(shapes);
-  }, [fields, user?.id, theme]);
+  }, [fields, fieldsFilter, user?.id, theme]);
 
   /**
    * Со вкладки профиля приходит id поля: подлетаем к нему и, если просили,
@@ -197,6 +208,9 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
     const target = fields.find((item) => item.id === focusFieldId);
     if (!target) return;
 
+    // Поле может быть чужим (переход из ленты/поста), а фильтр — на «Мои
+    // поля»: без сброса на «Все поля» цель осталась бы не нарисованной.
+    setFieldsFilter('all');
     const point = target.center ?? (target.boundary ? centroid(target.boundary) : null);
     if (point) mapRef.current?.flyTo([point.longitude, point.latitude], USER_ZOOM);
     if (focusOpensCard) setCardFieldId(target.id);
@@ -475,6 +489,19 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
       <View style={styles.container}>
         <MapGLView ref={mapRef} onEvent={handleMapEvent} onReload={handleMapReload} />
 
+      {!creating ? (
+        <Surface style={styles.filterBar} elevation={2}>
+          <SegmentedButtons
+            value={fieldsFilter}
+            onValueChange={(value) => setFieldsFilter(value as 'all' | 'mine')}
+            buttons={[
+              { value: 'all', label: 'Все поля' },
+              { value: 'mine', label: 'Мои поля' },
+            ]}
+          />
+        </Surface>
+      ) : null}
+
       {mode === 'point' ? (
         <View style={styles.crosshair} pointerEvents="none">
           <Icon name="crosshairs" size={40} color={theme.colors.primary} />
@@ -703,6 +730,25 @@ const makeStyles = (theme: MD3Theme) =>
       left: 0,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    // Фиксированная (не на всю ширину) ширина: без неё контейнер без `right`
+    // остаётся auto-размера, а кнопки сегмента растут по CSS-правилу
+    // flex-grow с flex-basis 0 — без заданной шириной родителя это схлопывает
+    // их к `minWidth` (76dp) и обрезает текст. 220 хватает обеим подписям с
+    // запасом и всё равно уже, чем во всю ширину, — не перекрывает
+    // зум-контрол 2GIS в правом верхнем углу.
+    // `borderRadius` совпадает с радиусом самих кнопок сегмента (5 * roundness
+    // при дефолтном roundness 4), а `overflow: 'hidden'` без внутреннего
+    // паддинга — чтобы угол плашки и угол кнопки были одной кривой, а не
+    // видимым прямым сколом позади скруглённой кнопки.
+    filterBar: {
+      position: 'absolute',
+      top: 12,
+      left: 16,
+      width: 220,
+      borderRadius: 20,
+      overflow: 'hidden',
+      backgroundColor: theme.colors.surface,
     },
     recenter: {
       position: 'absolute',
