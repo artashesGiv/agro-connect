@@ -4,7 +4,7 @@ import { dictionaries, type Crop } from '@/services/supabase';
 
 export type CropOption = Pick<Crop, 'id' | 'slug' | 'name'>;
 
-/** Список культур для чипов-фильтра на «Главной». Только эта фича их использует. */
+/** Список культур для чипов-фильтра ленты. Используется «Главной» и «Вопросами». */
 export function useCrops() {
   const [crops, setCrops] = useState<CropOption[]>([]);
   const [loading, setLoading] = useState(true);

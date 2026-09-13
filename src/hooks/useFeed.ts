@@ -13,14 +13,14 @@ import {
 /** Страница по 15 постов; keyset-курсор — `{ createdAt, id }` последнего. */
 const PAGE = 15;
 
-/** Пост ленты главной — как `ProfilePost`, плюс `isMine` и `createdAt` (курсор). */
+/** Пост ленты — как `ProfilePost`, плюс `isMine` и `createdAt` (курсор). */
 export type FeedItem = {
   id: string;
   postTypeCode: string;
   createdAt: string;
   isMine: boolean;
   fieldId: string | null;
-  author: { nickname: string; avatarUrl?: string };
+  author: { id: string; nickname: string; avatarUrl?: string; reputation: number };
   title: string;
   description?: string;
   images: string[];
@@ -43,10 +43,12 @@ function mapItem(
     isMine: viewerId ? post.profiles?.id === viewerId : false,
     fieldId: post.field_id,
     author: {
+      id: post.profiles?.id ?? '',
       nickname: post.profiles?.name ?? 'без имени',
       avatarUrl: post.profiles?.avatar_path
         ? storage.getAvatarUrl(post.profiles.avatar_path)
         : undefined,
+      reputation: post.profiles?.reputation ?? 0,
     },
     title: post.title ?? 'Без заголовка',
     description: post.body ?? undefined,
@@ -62,21 +64,26 @@ function mapItem(
 export type FeedFilter = {
   cropIds?: number[];
   search?: string;
+  /** Код из `post_types` (`field_update` / `question`) — какой тип постов грузить. */
+  postTypeCode?: string;
+  /** Только посты, привязанные к этому полю (экран «Связанные посты»). */
+  fieldId?: string;
 };
 
 /**
- * Бесконечная лента всех постов для вкладки «Главная». Страницы аккумулируются;
- * подгрузка — keyset по `(created_at, id)`. `setItems` наружу — для оптимистичных
- * реакций и вырезания поста при удалении (как `setPosts` в `useUserPosts`).
+ * Бесконечная лента постов — общая для «Главной» (посты) и «Вопросов»
+ * (фильтр по `postTypeCode: 'question'`). Страницы аккумулируются; подгрузка —
+ * keyset по `(created_at, id)`. `setItems` наружу — для оптимистичных реакций
+ * и вырезания поста при удалении (как `setPosts` в `useUserPosts`).
  *
- * `filter` (культура/поиск) меняет тождество `fetchPage`, а значит и `loadFirst` —
- * существующий эффект ниже перезапускает загрузку с нуля сам, без отдельного
- * сброса курсора.
+ * `filter` (тип/культура/поиск) меняет тождество `fetchPage`, а значит и
+ * `loadFirst` — существующий эффект ниже перезапускает загрузку с нуля сам,
+ * без отдельного сброса курсора.
  */
 export function useFeed(filter: FeedFilter = {}) {
   const { user } = useAuth();
   const viewerId = user?.id;
-  const { cropIds, search } = filter;
+  const { cropIds, search, postTypeCode, fieldId } = filter;
 
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,7 +95,7 @@ export function useFeed(filter: FeedFilter = {}) {
   const fetchPage = useCallback(
     async (cursor: Cursor): Promise<FeedItem[]> => {
       const [feed, activeTypes] = await Promise.all([
-        getFeed({ limit: PAGE, before: cursor, cropIds, search }),
+        getFeed({ limit: PAGE, before: cursor, cropIds, search, postTypeCode, fieldId }),
         dictionaries.getActiveReactionTypes(),
       ]);
       const paths = feed.flatMap((post) =>
@@ -97,7 +104,7 @@ export function useFeed(filter: FeedFilter = {}) {
       const urls = await storage.getPostMediaUrls(paths);
       return feed.map((post) => mapItem(post, urls, activeTypes, viewerId));
     },
-    [viewerId, cropIds, search],
+    [viewerId, cropIds, search, postTypeCode, fieldId],
   );
 
   const loadFirst = useCallback(async () => {

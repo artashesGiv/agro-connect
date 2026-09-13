@@ -1,7 +1,16 @@
-import { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Button, Dialog, type MD3Theme, Portal } from 'react-native-paper';
+import { useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, Text as RNText, View } from 'react-native';
+import {
+  Button,
+  Dialog,
+  IconButton,
+  Menu,
+  Text,
+  type MD3Theme,
+  Portal,
+} from 'react-native-paper';
 
+import { Icon } from '@/components/Icon';
 import { useAppTheme } from '@/theme';
 
 import type { Field } from '@/services/fields';
@@ -16,14 +25,17 @@ type FieldCardDialogProps = {
   onEditGeometry: () => void;
   onDelete: () => void;
   onViewOwner: () => void;
+  onRelatedPosts: () => void;
 };
 
 /**
  * Карточка поля по тапу на карте: что это за поле и что с ним можно сделать.
- * Отдельные действия для культур, названия/региона, геометрии и удаления —
- * но только для своего поля. Карточка чужого поля показывает те же сведения
- * плюс строку с владельцем и кнопку «Профиль» — но ни одной кнопки правки: у
- * чужого поля нельзя ни менять данные, ни удалить его.
+ * Своё поле — «⋮» у заголовка открывает меню редактирования (культуры,
+ * координаты, название/регион, удаление красным) — тот же приём, что меню
+ * «Редактировать/Удалить» в `PostCard`. Внизу — только «Связанные посты» и
+ * «Закрыть», без разнобоя из полудюжины кнопок. Карточка чужого поля — те же
+ * сведения плюс строка с владельцем и кнопка «Профиль», без «⋮»: у чужого
+ * поля нечего редактировать.
  */
 export function FieldCardDialog({
   field,
@@ -34,14 +46,83 @@ export function FieldCardDialog({
   onEditGeometry,
   onDelete,
   onViewOwner,
+  onRelatedPosts,
 }: FieldCardDialogProps) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <Portal>
       <Dialog visible={field !== null} onDismiss={onClose}>
-        <Dialog.Title>{field?.name ?? ''}</Dialog.Title>
+        <View style={styles.header}>
+          <Text
+            variant="headlineSmall"
+            style={styles.headerTitle}
+            numberOfLines={1}
+          >
+            {field?.name ?? ''}
+          </Text>
+          {isMine ? (
+            <Menu
+              visible={menuOpen}
+              onDismiss={() => setMenuOpen(false)}
+              contentStyle={styles.menuContent}
+              anchor={
+                <IconButton
+                  icon="dots-vertical"
+                  onPress={() => setMenuOpen(true)}
+                  accessibilityLabel="Действия с полем"
+                />
+              }
+            >
+              <Menu.Item
+                leadingIcon={() => (
+                  <Icon name="sprout-outline" size={20} color={theme.colors.onSurface} />
+                )}
+                title="Культуры"
+                titleStyle={styles.menuItemText}
+                onPress={() => {
+                  setMenuOpen(false);
+                  onEditCrops();
+                }}
+              />
+              <Menu.Item
+                leadingIcon={() => (
+                  <Icon name="vector-polygon" size={20} color={theme.colors.onSurface} />
+                )}
+                title="Координаты"
+                titleStyle={styles.menuItemText}
+                onPress={() => {
+                  setMenuOpen(false);
+                  onEditGeometry();
+                }}
+              />
+              <Menu.Item
+                leadingIcon={() => (
+                  <Icon name="pencil-outline" size={20} color={theme.colors.onSurface} />
+                )}
+                title="Название и регион"
+                titleStyle={styles.menuItemText}
+                onPress={() => {
+                  setMenuOpen(false);
+                  onEditInfo();
+                }}
+              />
+              <Menu.Item
+                leadingIcon={() => (
+                  <Icon name="trash-can-outline" size={20} color={theme.colors.error} />
+                )}
+                title="Удалить"
+                titleStyle={styles.menuItemDanger}
+                onPress={() => {
+                  setMenuOpen(false);
+                  onDelete();
+                }}
+              />
+            </Menu>
+          ) : null}
+        </View>
         <Dialog.ScrollArea style={styles.scrollArea}>
           <ScrollView contentContainerStyle={styles.scrollContent}>
             {!isMine ? (
@@ -63,28 +144,11 @@ export function FieldCardDialog({
           </ScrollView>
         </Dialog.ScrollArea>
         <Dialog.Actions style={styles.actions}>
-          {isMine
-            ? [
-                <Button key="delete" textColor={theme.colors.error} onPress={onDelete}>
-                  Удалить
-                </Button>,
-                <Button
-                  key="crops"
-                  onPress={onEditCrops}
-                  accessibilityLabel="Изменить культуры поля"
-                >
-                  Культуры
-                </Button>,
-                <Button key="geometry" onPress={onEditGeometry}>
-                  Координаты
-                </Button>,
-                <Button key="info" onPress={onEditInfo}>
-                  Название и регион
-                </Button>,
-              ]
-            : (
-                <Button onPress={onViewOwner}>Профиль</Button>
-              )}
+          {isMine ? (
+            <Button onPress={onRelatedPosts}>Связанные посты</Button>
+          ) : (
+            <Button onPress={onViewOwner}>Профиль</Button>
+          )}
           <Button mode="contained" onPress={onClose}>
             Закрыть
           </Button>
@@ -105,8 +169,8 @@ function Row({
 }) {
   return (
     <View style={styles.row}>
-      <Text style={styles.label}>{label}</Text>
-      <Text style={styles.value}>{value}</Text>
+      <RNText style={styles.label}>{label}</RNText>
+      <RNText style={styles.value}>{value}</RNText>
     </View>
   );
 }
@@ -120,6 +184,29 @@ function formatDate(value: string | undefined): string {
 
 const makeStyles = (theme: MD3Theme) =>
   StyleSheet.create({
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingLeft: 24,
+      paddingRight: 12,
+    },
+    headerTitle: {
+      flex: 1,
+      marginBottom: 16,
+      color: theme.colors.onSurface,
+    },
+    menuContent: {
+      borderRadius: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.colors.outline,
+    },
+    menuItemText: {
+      color: theme.colors.onSurface,
+    },
+    menuItemDanger: {
+      color: theme.colors.error,
+    },
     scrollArea: {
       maxHeight: 320,
     },
@@ -143,7 +230,6 @@ const makeStyles = (theme: MD3Theme) =>
       textAlign: 'right',
     },
     actions: {
-      flexWrap: 'wrap',
       justifyContent: 'flex-end',
     },
   });

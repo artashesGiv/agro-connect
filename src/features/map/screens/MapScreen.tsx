@@ -634,6 +634,14 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
           setCardFieldId(null);
           navigation.navigate('UserProfile', { userId: cardField.owner_id });
         }}
+        onRelatedPosts={() => {
+          if (!cardField) return;
+          setCardFieldId(null);
+          navigation.navigate('RelatedPosts', {
+            fieldId: cardField.id,
+            fieldName: cardField.name,
+          });
+        }}
       />
 
       {cropsField ? (

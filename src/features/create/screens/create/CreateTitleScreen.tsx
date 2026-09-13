@@ -20,13 +20,13 @@ export default function CreateTitleScreen({ navigation }: CreateTitleScreenProps
 
   const handleNext = async () => {
     if (!(await trigger(CREATE_STEP_FIELDS.title))) return;
-    navigation.navigate('CreateBody');
+    navigation.navigate('CreatePhotos');
   };
 
   return (
     <CreateStepLayout
       step={1}
-      title="Заголовок или вопрос"
+      title="Текст публикации"
       onNext={handleNext}
       // В режиме редактирования шаг 1 — не корень: «назад» закрывает мастер.
       onBack={postId ? navigation.goBack : undefined}
@@ -42,7 +42,16 @@ export default function CreateTitleScreen({ navigation }: CreateTitleScreenProps
           }
         />
       </View>
-      <FormTextInput control={control} name="title" label="Заголовок или вопрос" />
+      <FormTextInput control={control} name="title" label="Заголовок" />
+      <FormTextInput
+        control={control}
+        name="body"
+        label="Описание"
+        placeholder="Что произошло, что заметили, что планируете"
+        multiline
+        numberOfLines={6}
+        style={styles.body}
+      />
     </CreateStepLayout>
   );
 }
@@ -53,5 +62,8 @@ const styles = StyleSheet.create({
   },
   label: {
     marginBottom: 8,
+  },
+  body: {
+    minHeight: 140,
   },
 });

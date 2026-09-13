@@ -4,8 +4,7 @@ import { Chip, Menu, type MD3Theme } from 'react-native-paper';
 
 import { Icon } from '@/components/Icon';
 import { useAppTheme } from '@/theme';
-
-import type { CropOption } from '../hooks/useCrops';
+import type { CropOption } from '@/hooks/useCrops';
 
 type Props = {
   crops: CropOption[];

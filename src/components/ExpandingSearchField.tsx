@@ -14,6 +14,8 @@ type Props = {
   onChangeText: (value: string) => void;
   /** Заголовок, показываемый вместо поля, пока оно свёрнуто. */
   title: string;
+  /** Текст-подсказка в поле поиска. По умолчанию — «Поиск по постам». */
+  placeholder?: string;
 };
 
 const ANIM_DURATION = 200;
@@ -29,7 +31,13 @@ const SLIDE_DISTANCE = 24;
  * раскладка под плавающий label, которая не обязана уместиться в жёсткую
  * высоту хедера.
  */
-export function ExpandingSearchField({ visible, value, onChangeText, title }: Props) {
+export function ExpandingSearchField({
+  visible,
+  value,
+  onChangeText,
+  title,
+  placeholder = 'Поиск по постам',
+}: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const progress = useRef(new Animated.Value(visible ? 1 : 0)).current;
@@ -77,7 +85,7 @@ export function ExpandingSearchField({ visible, value, onChangeText, title }: Pr
           ref={inputRef}
           value={value}
           onChangeText={onChangeText}
-          placeholder="Поиск по постам"
+          placeholder={placeholder}
           placeholderTextColor={theme.colors.onSurfaceVariant}
           style={styles.input}
         />

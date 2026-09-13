@@ -11,13 +11,11 @@ import {
 
 import { AppHeader } from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { CropFilterSelect } from '@/components/CropFilterSelect';
 import { ExpandingSearchField } from '@/components/ExpandingSearchField';
 import { PostCard } from '@/components/PostCard';
-import { useCrops } from '@/hooks/useCrops';
 import { useFeed, type FeedItem } from '@/hooks/useFeed';
 import { useReactions } from '@/hooks/useReactions';
-import type { HomeScreenProps } from '@/navigation/types';
+import type { RelatedPostsScreenProps } from '@/navigation/types';
 import { useAuth } from '@/services/auth';
 import { deletePost } from '@/services/posts';
 import { toggleReactionSummary } from '@/services/reactions';
@@ -28,22 +26,24 @@ import { useAppTheme } from '@/theme';
 const SEARCH_DEBOUNCE_MS = 400;
 
 /**
- * Вкладка «Главная»: бесконечная лента всех постов. Первая страница 15 постов,
- * дальше подгрузка по 15 при долистывании (keyset-курсор в `useFeed`),
- * pull-to-refresh. Карточки интерактивные; меню «редактировать/удалить» — только
- * на своих постах.
+ * «Связанные посты» — вход с карточки своего поля на карте. Та же лента, что
+ * «Главная»/«Вопросы», но отфильтрована на `fieldId` без `postTypeCode` —
+ * посты и вопросы этого поля вперемешку, в одном хронологическом списке.
+ * Стек-экран (не таб): своя кнопка «Назад» в `AppHeader`.
  */
-export default function HomeScreen({ navigation }: HomeScreenProps) {
+export default function RelatedPostsScreen({
+  navigation,
+  route,
+}: RelatedPostsScreenProps) {
+  const { fieldId, fieldName } = route.params;
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const { user } = useAuth();
   const { setReaction } = useReactions();
-  const { crops } = useCrops();
 
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [cropIds, setCropIds] = useState<number[]>([]);
 
   useEffect(() => {
     const timer = setTimeout(() => setSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS);
@@ -70,11 +70,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     retry,
     syncItem,
   } = useFeed({
-    cropIds: cropIds.length ? cropIds : undefined,
+    fieldId,
     search: search || undefined,
-    postTypeCode: 'field_update',
   });
-  const filtered = Boolean(search) || cropIds.length > 0;
+  const filtered = Boolean(search);
 
   /** id поста, открытого в PostDetail/EditPost — перечитываем его при возврате. */
   const openedRef = useRef<string | null>(null);
@@ -104,8 +103,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   );
 
   const openFieldOnMap = useCallback(
-    (fieldId: string) => {
-      navigation.navigate('Map', { focusFieldId: fieldId, openCard: true });
+    (targetFieldId: string) => {
+      navigation.navigate('Tabs', {
+        screen: 'Map',
+        params: { focusFieldId: targetFieldId, openCard: true },
+      });
     },
     [navigation],
   );
@@ -113,7 +115,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const openAuthor = useCallback(
     (authorId: string, isMine: boolean) => {
       if (isMine) {
-        navigation.navigate('Profile');
+        navigation.navigate('Tabs', { screen: 'Profile' });
       } else {
         navigation.navigate('UserProfile', { userId: authorId });
       }
@@ -175,7 +177,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   const renderItem = useCallback(
     ({ item }: { item: FeedItem }) => {
-      const fieldId = item.fieldId;
+      const itemFieldId = item.fieldId;
       return (
         <PostCard
           author={item.author}
@@ -197,7 +199,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                 }
               : undefined
           }
-          onMap={fieldId ? () => openFieldOnMap(fieldId) : undefined}
+          onMap={itemFieldId ? () => openFieldOnMap(itemFieldId) : undefined}
         />
       );
     },
@@ -207,12 +209,14 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   return (
     <View style={styles.root}>
       <AppHeader
+        onBack={() => navigation.goBack()}
         titleSlot={
           <ExpandingSearchField
             visible={searchVisible}
             value={searchInput}
             onChangeText={setSearchInput}
-            title="Главная"
+            title={fieldName}
+            placeholder="Поиск по постам"
           />
         }
         actions={[
@@ -223,7 +227,6 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           },
         ]}
       />
-      <CropFilterSelect crops={crops} value={cropIds} onChange={setCropIds} />
 
       {loading ? (
         <ActivityIndicator style={styles.loader} />

@@ -14,7 +14,7 @@ export type RootTabParamList = {
    */
   Map: { focusFieldId?: string; openCard?: boolean } | undefined;
   Create: undefined;
-  Placeholder: undefined;
+  Questions: undefined;
   /** `refresh` — после создания поста мастером: перечитать ленту «Мои посты». */
   Profile: { refresh?: boolean } | undefined;
 };
@@ -33,6 +33,8 @@ export type AppStackParamList = {
   Notifications: undefined;
   /** Чужой профиль (карточка чужого поля → «Профиль»); свой профиль — вкладка. */
   UserProfile: { userId: string };
+  /** Карточка своего поля на карте → «Связанные посты»: посты + вопросы этого поля. */
+  RelatedPosts: { fieldId: string; fieldName: string };
 };
 
 /** Экраны вкладок, которым нужен переход в `AppStack` (PostDetail/EditPost/...). */
@@ -45,10 +47,7 @@ export type HomeScreenProps = TabScreenProps<'Home'>;
 /** Композит с `AppStack`: карточка чужого поля уводит на `UserProfile`. */
 export type MapScreenProps = TabScreenProps<'Map'>;
 export type CreateScreenProps = BottomTabScreenProps<RootTabParamList, 'Create'>;
-export type PlaceholderScreenProps = BottomTabScreenProps<
-  RootTabParamList,
-  'Placeholder'
->;
+export type QuestionsScreenProps = TabScreenProps<'Questions'>;
 export type ProfileScreenProps = TabScreenProps<'Profile'>;
 
 export type PostDetailScreenProps = NativeStackScreenProps<
@@ -78,6 +77,10 @@ export type NotificationsScreenProps = NativeStackScreenProps<
 export type UserProfileScreenProps = NativeStackScreenProps<
   AppStackParamList,
   'UserProfile'
+>;
+export type RelatedPostsScreenProps = NativeStackScreenProps<
+  AppStackParamList,
+  'RelatedPosts'
 >;
 
 export type AuthStackParamList = {
@@ -109,7 +112,6 @@ export type RegisterPasswordScreenProps = NativeStackScreenProps<
 
 export type CreateStackParamList = {
   CreateTitle: undefined;
-  CreateBody: undefined;
   CreatePhotos: undefined;
   CreateField: undefined;
   CreatePreview: undefined;
@@ -118,10 +120,6 @@ export type CreateStackParamList = {
 export type CreateTitleScreenProps = NativeStackScreenProps<
   CreateStackParamList,
   'CreateTitle'
->;
-export type CreateBodyScreenProps = NativeStackScreenProps<
-  CreateStackParamList,
-  'CreateBody'
 >;
 export type CreatePhotosScreenProps = NativeStackScreenProps<
   CreateStackParamList,

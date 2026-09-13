@@ -5,27 +5,34 @@ import type { MD3Theme } from 'react-native-paper';
 import { Icon, type IconName } from '@/components/Icon';
 import { useAppTheme } from '@/theme';
 
-export type ProfileSection = 'posts' | 'bookmarks' | 'fields';
+export type ProfileSection = 'posts' | 'fields';
 
 type Props = {
   value: ProfileSection;
   onChange: (section: ProfileSection) => void;
+  /** Переопределение подписей (accessibility) — напр. «Посты»/«Поля» у чужого профиля. */
+  labels?: Partial<Record<ProfileSection, string>>;
 };
 
-const TABS: { key: ProfileSection; icon: IconName; label: string }[] = [
-  { key: 'posts', icon: 'view-grid-outline', label: 'Мои посты' },
-  { key: 'bookmarks', icon: 'bookmark-outline', label: 'Закладки' },
-  { key: 'fields', icon: 'vector-polygon', label: 'Мои поля' },
+const DEFAULT_LABELS: Record<ProfileSection, string> = {
+  posts: 'Мои посты',
+  fields: 'Мои поля',
+};
+
+const TABS: { key: ProfileSection; icon: IconName }[] = [
+  { key: 'posts', icon: 'view-grid-outline' },
+  { key: 'fields', icon: 'vector-polygon' },
 ];
 
 /** Плоский переключатель секций профиля — только иконки, без подписей. */
-export function ProfileSectionTabs({ value, onChange }: Props) {
+export function ProfileSectionTabs({ value, onChange, labels }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
   return (
     <View style={styles.row}>
-      {TABS.map(({ key, icon, label }) => {
+      {TABS.map(({ key, icon }) => {
+        const label = labels?.[key] ?? DEFAULT_LABELS[key];
         const active = key === value;
         return (
           <Pressable

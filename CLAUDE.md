@@ -27,9 +27,9 @@ Single-package Expo app. The backend is **Supabase** (hosted Postgres + Auth + S
 
   - `RootNavigator.tsx` — the auth gate. `status === 'loading'` → blank background view (native splash still up); else `<NavigationContainer theme={navigationTheme}>` + `<StatusBar style="light">` wrapping either `<AppNavigator>` (`authenticated`) or `<AuthNavigator>` (everything else, **including `registering`** — during sign-up a session exists before the profile is written, and the user must not reach the tabs yet). Whole navigator is swapped, never `navigate()`.
   - `AppNavigator.tsx` — the authenticated root: a native-stack of `Tabs` (`MainTabs`) + `PostDetail {postId}` + `EditPost {postId}`, `headerShown: false` for all. `PostDetail`/`EditPost` sit here (not inside one tab's stack) because both Home and Profile open them; opening one covers the tab bar. Screens live in `features/post-detail` / `features/create`.
-  - `MainTabs.tsx` — the 5-tab bottom navigator: `Home`, `Map`, `Create`, `Placeholder` (`?`, temporary), `Profile`. Icons for all but `Create` come from `TAB_ICONS`; `Create` uses a custom `tabBarButton` (`CreateTabButton.tsx` — a big round `+`). `Home` is the real infinite feed (all posts), `Profile` is built out, `Map` is the real 2GIS map; `?` is a placeholder.
+  - `MainTabs.tsx` — the 5-tab bottom navigator: `Home`, `Map`, `Create`, `Questions`, `Profile`. Icons for all but `Create` come from `TAB_ICONS`; `Create` uses a custom `tabBarButton` (`CreateTabButton.tsx` — a big round `+`). `Home` is the real infinite feed filtered to `post_types.code = 'field_update'` posts, `Questions` is the same infinite feed (`@/hooks/useFeed`) filtered to `postTypeCode: 'question'`, `Profile` is built out, `Map` is the real 2GIS map. `Home` and `Questions` both get search (`@/components/ExpandingSearchField`) and a crop multi-select filter (`@/components/CropFilterSelect`) — shared, not feature-local, since two features use them.
   - Home / Profile screens type their nav as `CompositeScreenProps<BottomTabScreenProps<…>, NativeStackScreenProps<AppStackParamList>>` so `navigation.navigate('PostDetail' | 'EditPost' | 'Map', …)` all typecheck from a tab.
-  - **`src/components/AppHeader.tsx`** — the single top-bar component (Paper `Appbar.Header`, flat, left title, hairline bottom). **Native navigation headers are off everywhere** (`headerShown: false` on every tab and stack screen); each screen renders `<AppHeader title onBack leading actions />` itself. Used by `HomeScreen`, `ProfileHeader`, `MapScreen`/`PlaceholderScreen`, `PostDetailScreen`, and `CreateStepLayout`. `RegisterStepLayout` still has its own thin bar (auth flow, not yet migrated).
+  - **`src/components/AppHeader.tsx`** — the single top-bar component (Paper `Appbar.Header`, flat, left title, hairline bottom). **Native navigation headers are off everywhere** (`headerShown: false` on every tab and stack screen); each screen renders `<AppHeader title onBack leading actions />` itself. Used by `HomeScreen`, `QuestionsScreen`, `ProfileHeader`, `MapScreen`, `PostDetailScreen`, and `CreateStepLayout`. `RegisterStepLayout` still has its own thin bar (auth flow, not yet migrated).
   - `types.ts` — `RootTabParamList` + `AppStackParamList` + `AuthStackParamList` and per-screen prop aliases. Add new routes HERE first.
 - **`app.config.js`** — dynamic Expo config (replaces the old `app.json`). Portrait-locked, `userInterfaceStyle: 'light'`, `plugins: ['expo-image-picker']` (camera + photo-library permission strings), Android package `com.a1.contestapp` (placeholder — replace before final submission), EAS `projectId` in `extra.eas`.
 - **`eas.json`** — `preview` (internal-distribution APK) and `production` (app-bundle) profiles only.
@@ -48,7 +48,7 @@ Single-package Expo app. The backend is **Supabase** (hosted Postgres + Auth + S
 
 Android draws the app **edge-to-edge** (RN 0.81+), so content runs under the status bar and under the system navigation bar. Nothing is inset for free.
 
-- What already handles itself: the bottom tab bar (`BottomTabView` applies the bottom inset) and any screen that renders `AppHeader` — Paper's `Appbar.Header` applies the top inset itself. So Profile / Map / `?` / PostDetail / the create wizard need no top wrapper.
+- What already handles itself: the bottom tab bar (`BottomTabView` applies the bottom inset) and any screen that renders `AppHeader` — Paper's `Appbar.Header` applies the top inset itself. So Profile / Map / Questions / PostDetail / the create wizard need no top wrapper.
 - What must wrap itself: any screen with no `AppHeader`. `Home` (`headerShown: false`) and the whole auth stack (`headerShown: false`).
 - **`src/components/Screen.tsx`** — `SafeAreaView` + themed background, `edges` defaults to `['top']` (inside tabs the bar covers the bottom). Use it for plain screens.
 - **`src/components/KeyboardAwareScreen.tsx`** — the form variant: safe area (`['top','bottom']` by default) + `ScrollView` that pulls the focused field into the **centre of the visible area** instead of leaving it at the edge of the keyboard.
@@ -120,7 +120,7 @@ Screens never touch `supabase` directly — they go through a feature `repositor
 - `src/services/reactions/` — `setPostReaction` (exclusive: `previous → next` is delete+insert) + `summarizeReactions` / `toggleReactionSummary` pure helpers. Shared because the home feed, the profile feed and `PostDetail` all react; the toggle hook is `src/hooks/useReactions.ts`, optimistic update + rollback done by the screen. `ReactionSummary` lives in `src/types/reactions.ts` so `src/components/ReactionControl` can import it without reaching into services.
 - `features/post-detail/` — the `PostDetail` screen (an `AppStack` route) + `repository/commentsRepository.ts` (`answers` CRUD, `answer_votes`) + `hooks/useComments.ts` (list/add/edit/remove + optimistic `vote`). Not in `services` because only this feature needs comments.
 - The hooks are intentionally hand-rolled (`loading` / `error` / `reload`, no cache). When caching actually becomes a problem, react-query slots in behind the same hook signature and no screen changes.
-- Still unwrapped, by design: accepted-answer (no backend flag), bookmarks.
+- Still unwrapped, by design: accepted-answer (no backend flag). Bookmarks were removed (tab in Profile, action on `PostCard`) rather than left as a stub.
 
 
 ### Folder layout — where code goes
@@ -130,15 +130,19 @@ src/
 ├── app/                    # (empty) reserved for future navigator/route config
 ├── navigation/             # composition root: RootNavigator (auth gate), MainTabs, types.ts
 ├── features/               # one folder per feature; a feature owns its screens + the code only it uses
-│   ├── home/               # "Главная" tab — infinite feed of all posts (screens/HomeScreen + hooks/useFeed.ts);
-│   │                       #   the posts repository lives in src/services/posts (profile + PostDetail reuse it)
-│   ├── create/             # "+" tab — 5-step create-post wizard, same shape as the register wizard:
+│   ├── home/               # "Главная" tab — infinite feed of `field_update` posts (screens/HomeScreen.tsx);
+│   │                       #   the posts repository lives in src/services/posts (profile + PostDetail reuse it);
+│   │                       #   feed hook (useFeed), crop dictionary hook (useCrops), search/crop-filter UI live in
+│   │                       #   src/hooks and src/components since `questions/` reuses them too
+│   ├── questions/          # "Вопросы" tab — same infinite feed (src/hooks/useFeed), filtered to
+│   │                       #   postTypeCode: 'question' (screens/QuestionsScreen.tsx)
+│   ├── create/             # "+" tab — 4-step create-post wizard, same shape as the register wizard:
 │   │                       #   schemas/ (zod), forms/CreatePostProvider.tsx (initialValues + postId → edit mode),
 │   │                       #   navigation/CreateNavigator.tsx, components/ (CreateStepLayout, PostTypeToggle,
 │   │                       #   PhotoPicker), screens/create/*, screens/EditPostScreen.tsx (reuses the wizard)
 │   ├── post-detail/        # PostDetail screen (AppStack route) — comments + reactions + votes:
 │   │                       #   repository/commentsRepository.ts, hooks/useComments.ts, components/ (CommentItem, CommentComposer)
-│   ├── placeholder/  profile/   # placeholder/ is a stub tab; profile is built out (see Project status)
+│   ├── profile/            # "Профиль" tab — the most built-out feature (see Project status)
 │   ├── auth/               # auth UI: screens/ (+ screens/register/ wizard), navigation/ (Auth + nested Register),
 │   │                       #   schemas/ (zod), forms/RegisterFormProvider.tsx, components/RegisterStepLayout.tsx
 │   │                       #   (session logic lives in src/services/auth — see "Auth — the session")
@@ -172,7 +176,7 @@ New screen → `src/features/<feature>/screens/`, and register the route in `src
 
 ### Project status
 
-This is a **contest-app boilerplate**, not a finished product. Despite the `agro-connect` repo name, the app is an auth flow (real Login form + 3-step Register wizard, both against Supabase) in front of a 5-tab shell. `?` is a placeholder. **Home** is a real infinite feed of all posts (`useFeed` — 15 per page, compound keyset cursor, pull-to-refresh); cards are interactive (reactions, tap → `PostDetail`, edit/delete only on own posts). **Map** is a real 2GIS (MapGL-in-WebView) tab with the user's own fields — draw a point/polygon, edit, delete (see the "Карта" section in `SPEC.md`). **Create** is the 5-step post wizard (also reused for editing). **Profile** is the most built-out feature: `AppHeader` (bell / `@name` / gear — gear currently does `signOut`), a `ProfileInfo` card off the real `profiles` row, and a "Мои посты / Закладки / Мои поля" switch — posts render the real feed with working reactions, comment counts, an overflow menu wired to **edit** (`EditPost`) and **delete**, a tap-through to **`PostDetail`** (comments + votes + reactions); "Мои поля" lists `fields` with jump-to-map / edit / delete. Bookmarks are still a stub. `SPEC.md` still has open questions about the actual app idea. Read and update `SPEC.md` before building real features.
+This is a **contest-app boilerplate**, not a finished product. Despite the `agro-connect` repo name, the app is an auth flow (real Login form + 3-step Register wizard, both against Supabase) in front of a 5-tab shell. **Home** is a real infinite feed of posts typed `field_update` (`@/hooks/useFeed` — 15 per page, compound keyset cursor, pull-to-refresh, search + crop filter); cards are interactive (reactions, tap → `PostDetail`, edit/delete only on own posts). **Questions** is the same feed hook filtered to `postTypeCode: 'question'`, with its own search/crop filter — `posts.crop_id` is trigger-derived from the post's linked field (`fields.current_crop_id`) and field linking is optional, so a question posted without a field never matches a crop filter; that's accepted, not a bug. **Map** is a real 2GIS (MapGL-in-WebView) tab with the user's own fields — draw a point/polygon, edit, delete (see the "Карта" section in `SPEC.md`). **Create** is the 4-step post wizard (type + title + description on one screen, then photos, field, preview; also reused for editing). **Profile** is the most built-out feature: `AppHeader` (bell / `@name` / gear — gear currently does `signOut`), a `ProfileInfo` card off the real `profiles` row, and a "Мои посты / Мои поля" switch — posts render the real feed with working reactions, comment counts, an overflow menu wired to **edit** (`EditPost`) and **delete**, a tap-through to **`PostDetail`** (comments + votes + reactions); "Мои поля" lists `fields` with jump-to-map / edit / delete. `SPEC.md` still has open questions about the actual app idea. Read and update `SPEC.md` before building real features.
 
 ## Agent skills
 

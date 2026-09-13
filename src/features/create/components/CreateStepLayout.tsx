@@ -8,10 +8,10 @@ import { useAppTheme } from '@/theme';
 
 import { useCreatePostMeta } from '../forms/CreatePostProvider';
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 4;
 
 type CreateStepLayoutProps = {
-  /** Номер шага, 1..5 — для прогресс-бара. */
+  /** Номер шага, 1..4 — для прогресс-бара. */
   step: number;
   title: string;
   subtitle?: string;

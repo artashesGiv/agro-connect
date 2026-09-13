@@ -14,7 +14,8 @@ const commentSelect = `
   author_id,
   profiles!answers_author_id_fkey (
     name,
-    avatar_path
+    avatar_path,
+    reputation
   ),
   answer_votes (
     user_id,
@@ -28,7 +29,7 @@ export type CommentRow = {
   created_at: string;
   updated_at: string;
   author_id: string;
-  profiles: { name: string | null; avatar_path: string | null } | null;
+  profiles: { name: string | null; avatar_path: string | null; reputation: number | null } | null;
   answer_votes: { user_id: string; value: number }[];
 };
 

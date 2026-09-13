@@ -62,7 +62,7 @@ export default function CreateFieldScreen({ navigation }: CreateFieldScreenProps
 
   return (
     <CreateStepLayout
-      step={4}
+      step={3}
       title="Поле"
       subtitle="К какому полю относится пост — необязательно."
       onBack={navigation.goBack}

@@ -4,8 +4,8 @@ import { Icon, type IconName } from '../components/Icon';
 import CreateScreen from '../features/create/screens/CreateScreen';
 import HomeScreen from '../features/home/screens/HomeScreen';
 import MapScreen from '../features/map/screens/MapScreen';
-import PlaceholderScreen from '../features/placeholder/screens/PlaceholderScreen';
 import ProfileScreen from '../features/profile/screens/ProfileScreen';
+import QuestionsScreen from '../features/questions/screens/QuestionsScreen';
 import { CreateTabButton } from './CreateTabButton';
 import type { RootTabParamList } from './types';
 
@@ -16,7 +16,7 @@ const TAB_ICONS: Partial<
 > = {
   Home: { active: 'home', inactive: 'home-outline' },
   Map: { active: 'map', inactive: 'map-outline' },
-  Placeholder: { active: 'help-circle', inactive: 'help-circle-outline' },
+  Questions: { active: 'help-circle', inactive: 'help-circle-outline' },
   Profile: { active: 'account', inactive: 'account-outline' },
 };
 
@@ -66,9 +66,9 @@ export function MainTabs() {
         }}
       />
       <Tab.Screen
-        name="Placeholder"
-        component={PlaceholderScreen}
-        options={{ title: '?', headerShown: false }}
+        name="Questions"
+        component={QuestionsScreen}
+        options={{ title: 'Вопросы', headerShown: false }}
       />
       <Tab.Screen
         name="Profile"

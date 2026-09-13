@@ -17,7 +17,7 @@ import { PostCard } from '@/components/PostCard';
 import { useCrops } from '@/hooks/useCrops';
 import { useFeed, type FeedItem } from '@/hooks/useFeed';
 import { useReactions } from '@/hooks/useReactions';
-import type { HomeScreenProps } from '@/navigation/types';
+import type { QuestionsScreenProps } from '@/navigation/types';
 import { useAuth } from '@/services/auth';
 import { deletePost } from '@/services/posts';
 import { toggleReactionSummary } from '@/services/reactions';
@@ -28,12 +28,11 @@ import { useAppTheme } from '@/theme';
 const SEARCH_DEBOUNCE_MS = 400;
 
 /**
- * Вкладка «Главная»: бесконечная лента всех постов. Первая страница 15 постов,
- * дальше подгрузка по 15 при долистывании (keyset-курсор в `useFeed`),
- * pull-to-refresh. Карточки интерактивные; меню «редактировать/удалить» — только
- * на своих постах.
+ * Вкладка «Вопросы»: та же бесконечная лента, что и «Главная», но
+ * отфильтрованная на `postTypeCode: 'question'` — поиск и фильтр по культуре
+ * переиспользуют те же общие компоненты (`@/components`, `@/hooks`).
  */
-export default function HomeScreen({ navigation }: HomeScreenProps) {
+export default function QuestionsScreen({ navigation }: QuestionsScreenProps) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const { user } = useAuth();
@@ -72,7 +71,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   } = useFeed({
     cropIds: cropIds.length ? cropIds : undefined,
     search: search || undefined,
-    postTypeCode: 'field_update',
+    postTypeCode: 'question',
   });
   const filtered = Boolean(search) || cropIds.length > 0;
 
@@ -212,7 +211,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             visible={searchVisible}
             value={searchInput}
             onChangeText={setSearchInput}
-            title="Главная"
+            title="Вопросы"
+            placeholder="Поиск по вопросам"
           />
         }
         actions={[
@@ -247,14 +247,14 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           }
           ListEmptyComponent={
             <Text style={styles.stateText}>
-              {filtered ? 'Ничего не найдено' : 'Постов пока нет'}
+              {filtered ? 'Ничего не найдено' : 'Вопросов пока нет'}
             </Text>
           }
           ListFooterComponent={
             loadingMore ? (
               <ActivityIndicator style={styles.footer} />
             ) : !hasMore && items.length > 0 ? (
-              <Text style={styles.footerText}>Больше постов нет</Text>
+              <Text style={styles.footerText}>Больше вопросов нет</Text>
             ) : null
           }
         />
