@@ -121,6 +121,8 @@ export type Database = {
       }
       fields: {
         Row: {
+          crops: Json | null
+          current_crop: Json | null
           boundary: unknown
           center: unknown
           created_at: string
@@ -131,6 +133,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          crops?: Json | null
+          current_crop?: Json | null
           boundary?: unknown
           center?: unknown
           created_at?: string
@@ -141,6 +145,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          crops?: Json | null
+          current_crop?: Json | null
           boundary?: unknown
           center?: unknown
           created_at?: string

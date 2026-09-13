@@ -4,5 +4,6 @@ export {
   deleteField,
   getFields,
   updateField,
+  updateFieldCrops,
 } from './fieldsApi';
-export type { Coordinates, Field, FieldPatch, NewField } from './fieldsApi';
+export type { Coordinates, FieldCrop, FieldOwner, Field, FieldPatch, NewField } from './fieldsApi';

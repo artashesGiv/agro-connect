@@ -57,11 +57,17 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
   const { posts, setPosts, loading, error, reload, syncItem } = useUserPosts(user?.id);
   const { setReaction } = useReactions();
   const {
-    fields,
+    fields: allFields,
     loading: fieldsLoading,
     error: fieldsError,
     reload: reloadFields,
   } = useFields();
+  // `useFields` теперь возвращает вообще все поля (SELECT на `fields` не
+  // сужен до владельца), а секция называется «Мои поля» — фильтруем сами.
+  const fields = useMemo(
+    () => allFields.filter((field) => field.owner_id === user?.id),
+    [allFields, user?.id],
+  );
 
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);

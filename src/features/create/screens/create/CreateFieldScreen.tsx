@@ -15,6 +15,7 @@ import {
 import { Icon } from '@/components/Icon';
 import { useFields } from '@/hooks/useFields';
 import type { CreateFieldScreenProps, RootTabParamList } from '@/navigation/types';
+import { useAuth } from '@/services/auth';
 import { useAppTheme } from '@/theme';
 
 import { CreateStepLayout } from '../../components/CreateStepLayout';
@@ -27,7 +28,14 @@ export default function CreateFieldScreen({ navigation }: CreateFieldScreenProps
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const { control, setValue } = useFormContext<CreatePostFormValues>();
   const fieldId = useWatch({ control, name: 'fieldId' });
-  const { fields, loading, error, reload } = useFields();
+  const { user } = useAuth();
+  const { fields: allFields, loading, error, reload } = useFields();
+  // `useFields` возвращает все поля (SELECT на `fields` публичный — нужен карте),
+  // а привязать пост можно только к своему полю (это же проверяет RLS на posts).
+  const fields = useMemo(
+    () => allFields.filter((field) => field.owner_id === user?.id),
+    [allFields, user?.id],
+  );
 
   // Список — маленький и без пагинации; освежаем при каждом возврате на шаг
   // (например, после добавления поля на карте).

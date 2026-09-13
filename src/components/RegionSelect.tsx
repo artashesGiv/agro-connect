@@ -27,6 +27,8 @@ type RegionSelectProps<T extends FieldValues> = {
   label: string;
   /** Добавляет пункт «Не указан» вверху списка — для необязательного региона. */
   clearable?: boolean;
+  /** Компактная высота поля — для форм, где регион не главное (например, поле карты). */
+  dense?: boolean;
 };
 
 /**
@@ -40,6 +42,7 @@ export function RegionSelect<T extends FieldValues>({
   name,
   label,
   clearable,
+  dense,
 }: RegionSelectProps<T>) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
@@ -80,6 +83,7 @@ export function RegionSelect<T extends FieldValues>({
               >
                 <TextInput
                   mode="outlined"
+                  dense={dense}
                   label={label}
                   value={value || ''}
                   editable={false}
@@ -88,9 +92,18 @@ export function RegionSelect<T extends FieldValues>({
                 />
               </View>
             </Pressable>
-            <HelperText type="error" visible={Boolean(error)}>
-              {error?.message ?? ' '}
-            </HelperText>
+            {/* В компактном режиме строку под ошибку не резервируем, если её нет — иначе поле выглядит крупнее, чем задумано. */}
+            {dense ? (
+              error ? (
+                <HelperText type="error" visible padding="none">
+                  {error.message}
+                </HelperText>
+              ) : null
+            ) : (
+              <HelperText type="error" visible={Boolean(error)}>
+                {error?.message ?? ' '}
+              </HelperText>
+            )}
 
             <Portal>
               <Dialog visible={visible} onDismiss={close} style={styles.dialog}>
