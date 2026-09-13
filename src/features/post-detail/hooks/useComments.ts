@@ -12,6 +12,9 @@ import {
   type CommentRow,
 } from '../repository/commentsRepository';
 
+/** Отображаемое имя профиля ИИ-помощника — так бэкенд подписывает его комментарии. */
+const AI_AUTHOR_NAME = 'ИИ-помощник';
+
 export type Comment = {
   id: string;
   author: { nickname: string; avatarUrl?: string };
@@ -20,6 +23,7 @@ export type Comment = {
   /** Задано, если комментарий редактировали. */
   editedAt?: string;
   isMine: boolean;
+  isAi: boolean;
   score: number;
   myVote: -1 | 0 | 1;
 };
@@ -41,6 +45,7 @@ function mapRow(row: CommentRow, viewerId: string | undefined): Comment {
     createdAt: row.created_at,
     editedAt: row.updated_at !== row.created_at ? row.updated_at : undefined,
     isMine: viewerId ? row.author_id === viewerId : false,
+    isAi: row.profiles?.name === AI_AUTHOR_NAME,
     score,
     myVote: mine === 1 ? 1 : mine === -1 ? -1 : 0,
   };

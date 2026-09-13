@@ -1,0 +1,1 @@
+export { triggerPostAiProcessing } from './aiPostsApi';
