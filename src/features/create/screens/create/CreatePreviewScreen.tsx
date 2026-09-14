@@ -159,6 +159,7 @@ export default function CreatePreviewScreen({
           images={values.photos.map((photo) =>
             photo.kind === 'new' ? photo.uri : photo.url,
           )}
+          showMenu={false}
         />
       </View>
       {selectedField ? (

@@ -22,6 +22,8 @@ const NOTIFICATION_ICONS: Record<NotificationType, IconName> = {
   reputation_star_up: 'star-outline',
   post_reaction: 'heart-outline',
   answer_vote: 'thumb-up-outline',
+  post_summary_ready: 'robot-outline',
+  post_summary_failed: 'robot-off-outline',
   system: 'bullhorn-outline',
 };
 
