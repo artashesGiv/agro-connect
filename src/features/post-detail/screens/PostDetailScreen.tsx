@@ -31,7 +31,24 @@ import {
   type ComposerReplyTo,
 } from '../components/CommentComposer';
 import { CommentItem } from '../components/CommentItem';
-import { useComments } from '../hooks/useComments';
+import { ShowMoreReplies } from '../components/ShowMoreReplies';
+import { useComments, type Comment } from '../hooks/useComments';
+
+/** Сколько ответов ветки показывать без разворачивания. */
+const VISIBLE_REPLIES = 2;
+
+type CommentRowView =
+  | { kind: 'comment'; comment: Comment }
+  | { kind: 'more'; rootId: string; count: number };
+
+/** Идёт вверх по `parentId`, пока не найдёт комментарий-корень ветки. */
+function findRootId(comments: Comment[], id: string): string {
+  let current = comments.find((c) => c.id === id);
+  while (current?.parentId) {
+    current = comments.find((c) => c.id === current!.parentId);
+  }
+  return current?.id ?? id;
+}
 
 type PostView = {
   author: { id: string; nickname: string; avatarUrl?: string; reputation: number };
@@ -88,6 +105,7 @@ export default function PostDetailScreen({
 
   const [editing, setEditing] = useState<ComposerEditing>(null);
   const [replyTo, setReplyTo] = useState<ComposerReplyTo>(null);
+  const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -174,7 +192,9 @@ export default function PostDetailScreen({
           await edit(editing.id, text);
           setEditing(null);
         } else if (replyTo) {
+          const rootId = findRootId(comments, replyTo.id);
           await add(text, replyTo.id);
+          setExpandedThreads((prev) => new Set(prev).add(rootId));
           setReplyTo(null);
         } else {
           await add(text);
@@ -187,7 +207,7 @@ export default function PostDetailScreen({
         setSubmitting(false);
       }
     },
-    [editing, replyTo, edit, add],
+    [editing, replyTo, edit, add, comments],
   );
 
   const openFieldOnMap = useCallback(
@@ -241,6 +261,33 @@ export default function PostDetailScreen({
   const terms = post?.postTypeCode === 'question' ? TERMS.question : TERMS.post;
   const fieldId = post?.fieldId ?? null;
 
+  /**
+   * `comments` уже сгруппирован по потокам (`useComments` → `orderByThread`):
+   * между двумя корнями лежит ровно всё поддерево первого. Здесь только
+   * нарезаем каждый такой блок на «первые N / остальное за кнопкой».
+   */
+  const rows = useMemo<CommentRowView[]>(() => {
+    const result: CommentRowView[] = [];
+    let i = 0;
+    while (i < comments.length) {
+      const root = comments[i];
+      result.push({ kind: 'comment', comment: root });
+      i++;
+      if (root.parentId === null && !root.isAi) {
+        let j = i;
+        while (j < comments.length && comments[j].parentId !== null) j++;
+        const replies = comments.slice(i, j);
+        const expanded = expandedThreads.has(root.id);
+        const visible = expanded ? replies : replies.slice(0, VISIBLE_REPLIES);
+        visible.forEach((reply) => result.push({ kind: 'comment', comment: reply }));
+        const hidden = replies.length - visible.length;
+        if (hidden > 0) result.push({ kind: 'more', rootId: root.id, count: hidden });
+        i = j;
+      }
+    }
+    return result;
+  }, [comments, expandedThreads]);
+
   return (
     <SafeAreaView edges={['bottom']} style={styles.root}>
       <AppHeader title="Пост" onBack={() => navigation.goBack()} />
@@ -282,7 +329,19 @@ export default function PostDetailScreen({
               <Text style={styles.stateText}>{terms.empty}</Text>
             ) : null}
 
-            {comments.map((comment) => {
+            {rows.map((row) => {
+              if (row.kind === 'more') {
+                return (
+                  <ShowMoreReplies
+                    key={`more-${row.rootId}`}
+                    count={row.count}
+                    onPress={() =>
+                      setExpandedThreads((prev) => new Set(prev).add(row.rootId))
+                    }
+                  />
+                );
+              }
+              const comment = row.comment;
               const authorId = comment.author.id;
               return (
                 <CommentItem
