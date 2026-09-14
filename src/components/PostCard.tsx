@@ -5,6 +5,7 @@ import { Avatar, Menu, Text, type MD3Theme } from 'react-native-paper';
 import type { ReactionSummary } from '@/types/reactions';
 import { useAppTheme } from '@/theme';
 import { formatDateTime } from '@/utils/formatDateTime';
+import { ConfirmDialog } from './ConfirmDialog';
 import { ExpandableText } from './ExpandableText';
 import { Icon, type IconName } from './Icon';
 import { PostPhotos } from './PostPhotos';
@@ -99,8 +100,9 @@ type PostCardProps = {
  * Несколько фото — свайпаемая карусель с точками (`PostPhotos`); тап по фото
  * открывает полноэкранный просмотр. Тап по остальному телу (заголовок/описание)
  * ничего не делает — единственный переход в `PostDetail` — клик по комментарию.
- * «Три точки» с меню «Редактировать / Удалить» показываем, когда родитель дал
- * `onEdit`/`onDelete` (для своих постов).
+ * «Три точки» есть всегда: на своём посте — меню «Редактировать / Удалить»
+ * (когда родитель дал `onEdit`/`onDelete`), на чужом — «Пожаловаться» (только
+ * подтверждение, без обращения к бэкенду — жалобы пока никуда не сохраняются).
  */
 export function PostCard({
   author,
@@ -122,6 +124,7 @@ export function PostCard({
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [reportDialogVisible, setReportDialogVisible] = useState(false);
   const hasMenu = Boolean(onEdit || onDelete);
 
   return (
@@ -150,59 +153,73 @@ export function PostCard({
           </View>
         </Pressable>
 
-        {hasMenu ? (
-          <Menu
-            visible={menuOpen}
-            onDismiss={() => setMenuOpen(false)}
-            contentStyle={styles.menuContent}
-            anchor={
-              <Pressable
-                onPress={() => setMenuOpen(true)}
-                hitSlop={6}
-                style={actionStyles.action}
-                accessibilityRole="button"
-                accessibilityLabel="Действия с постом"
-              >
-                <Icon
-                  name="dots-vertical"
-                  size={20}
-                  color={theme.colors.onSurfaceVariant}
-                />
-              </Pressable>
-            }
-          >
+        <Menu
+          visible={menuOpen}
+          onDismiss={() => setMenuOpen(false)}
+          contentStyle={styles.menuContent}
+          anchor={
+            <Pressable
+              onPress={() => setMenuOpen(true)}
+              hitSlop={6}
+              style={actionStyles.action}
+              accessibilityRole="button"
+              accessibilityLabel="Действия с постом"
+            >
+              <Icon
+                name="dots-vertical"
+                size={20}
+                color={theme.colors.onSurfaceVariant}
+              />
+            </Pressable>
+          }
+        >
+          {hasMenu ? (
+            <>
+              <Menu.Item
+                leadingIcon={() => (
+                  <Icon
+                    name="pencil-outline"
+                    size={20}
+                    color={theme.colors.onSurface}
+                  />
+                )}
+                title="Редактировать"
+                titleStyle={styles.menuItemText}
+                onPress={() => {
+                  setMenuOpen(false);
+                  onEdit?.();
+                }}
+              />
+              <Menu.Item
+                leadingIcon={() => (
+                  <Icon
+                    name="trash-can-outline"
+                    size={20}
+                    color={theme.colors.error}
+                  />
+                )}
+                title="Удалить"
+                titleStyle={styles.menuItemDanger}
+                onPress={() => {
+                  setMenuOpen(false);
+                  onDelete?.();
+                }}
+              />
+            </>
+          ) : (
             <Menu.Item
               leadingIcon={() => (
-                <Icon
-                  name="pencil-outline"
-                  size={20}
-                  color={theme.colors.onSurface}
-                />
+                <Icon name="flag-outline" size={20} color={theme.colors.error} />
               )}
-              title="Редактировать"
-              titleStyle={styles.menuItemText}
-              onPress={() => {
-                setMenuOpen(false);
-                onEdit?.();
-              }}
-            />
-            <Menu.Item
-              leadingIcon={() => (
-                <Icon
-                  name="trash-can-outline"
-                  size={20}
-                  color={theme.colors.error}
-                />
-              )}
-              title="Удалить"
+              title="Пожаловаться"
               titleStyle={styles.menuItemDanger}
               onPress={() => {
                 setMenuOpen(false);
-                onDelete?.();
+                setReportDialogVisible(true);
               }}
             />
-          </Menu>
-        ) : null}
+          )}
+        </Menu>
       </View>
 
       <View style={styles.body}>
@@ -244,6 +261,16 @@ export function PostCard({
         </View>
         {createdAt ? <Text style={styles.date}>{formatDateTime(createdAt)}</Text> : null}
       </View>
+
+      <ConfirmDialog
+        visible={reportDialogVisible}
+        title="Отправить жалобу?"
+        message="Уверены, что хотите отправить жалобу на этот пост?"
+        confirmLabel="Отправить"
+        destructive
+        onConfirm={() => setReportDialogVisible(false)}
+        onCancel={() => setReportDialogVisible(false)}
+      />
     </View>
   );
 }
