@@ -1,3 +1,4 @@
+import { updateFieldStage } from '@/services/fields';
 import { dictionaries, storage, supabase } from '@/services/supabase';
 import type { PostMediaMimeType } from '@/services/supabase/storage';
 import type { TablesInsert } from '@/types/database.types';
@@ -18,6 +19,7 @@ const feedSelect = (innerPostType: boolean) => `
   body,
   created_at,
   field_id,
+  stage_id,
   profiles!posts_author_id_fkey (
     id,
     name,
@@ -64,6 +66,7 @@ export type FeedPost = {
   body: string | null;
   created_at: string;
   field_id: string | null;
+  stage_id: number | null;
   profiles: {
     id: string;
     name: string | null;
@@ -179,6 +182,7 @@ export async function updatePost(
     body?: string | null;
     postTypeId?: number;
     fieldId?: string | null;
+    stageId?: number | null;
   },
 ) {
   const { data, error } = await supabase
@@ -188,6 +192,7 @@ export async function updatePost(
       ...(patch.body !== undefined ? { body: patch.body } : {}),
       ...(patch.postTypeId !== undefined ? { post_type_id: patch.postTypeId } : {}),
       ...(patch.fieldId !== undefined ? { field_id: patch.fieldId } : {}),
+      ...(patch.stageId !== undefined ? { stage_id: patch.stageId } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
@@ -224,7 +229,12 @@ export async function updatePostWithMedia(
     body: input.body?.trim() || null,
     postTypeId: type.id,
     fieldId: input.fieldId ?? null,
+    stageId: input.fieldId ? input.stageId ?? null : null,
   });
+
+  if (input.fieldId) {
+    await updateFieldStage(input.fieldId, input.stageId ?? null).catch(() => {});
+  }
 
   const { data: current, error: readError } = await supabase
     .from('post_media')
@@ -282,6 +292,8 @@ export type CreatePostInput = {
   body?: string | null;
   /** id строки `fields`; `null`/не задано — пост без привязки. */
   fieldId?: string | null;
+  /** `post_stages.id`; действует только вместе с `fieldId`. */
+  stageId?: number | null;
 };
 
 /** Приводим MIME из пикера к тому, что принимает бакет `post-media`. */
@@ -313,7 +325,12 @@ export async function createPostWithMedia(
     title: input.title?.trim() || null,
     body: input.body?.trim() || null,
     field_id: input.fieldId ?? null,
+    stage_id: input.fieldId ? input.stageId ?? null : null,
   });
+
+  if (input.fieldId) {
+    await updateFieldStage(input.fieldId, input.stageId ?? null).catch(() => {});
+  }
 
   if (photos.length === 0) return post.id;
 

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useFormContext, useWatch } from 'react-hook-form';
@@ -6,8 +6,10 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import {
   ActivityIndicator,
   Button,
+  Chip,
   Divider,
   List,
+  Menu,
   Text,
   type MD3Theme,
 } from 'react-native-paper';
@@ -16,6 +18,7 @@ import { Icon } from '@/components/Icon';
 import { useFields } from '@/hooks/useFields';
 import type { CreateFieldScreenProps, RootTabParamList } from '@/navigation/types';
 import { useAuth } from '@/services/auth';
+import { dictionaries, type PostStage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
 
 import { CreateStepLayout } from '../../components/CreateStepLayout';
@@ -28,8 +31,21 @@ export default function CreateFieldScreen({ navigation }: CreateFieldScreenProps
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const { control, setValue } = useFormContext<CreatePostFormValues>();
   const fieldId = useWatch({ control, name: 'fieldId' });
+  const stageId = useWatch({ control, name: 'stageId' });
   const { user } = useAuth();
   const { fields: allFields, loading, error, reload } = useFields();
+  const [stages, setStages] = useState<PostStage[]>([]);
+  const [stageMenuOpen, setStageMenuOpen] = useState(false);
+
+  useEffect(() => {
+    dictionaries.getPostStages().then(setStages).catch(() => {});
+  }, []);
+  // «Проблема» временно скрыта из выбора — но имя уже выставленного статуса
+  // (`currentStageName` ниже) резолвится из полного `stages`, не отсюда.
+  const selectableStages = useMemo(
+    () => stages.filter((stage) => stage.code !== 'problem'),
+    [stages],
+  );
   // `useFields` возвращает все поля (SELECT на `fields` публичный — нужен карте),
   // а привязать пост можно только к своему полю (это же проверяет RLS на posts).
   const fields = useMemo(
@@ -45,7 +61,16 @@ export default function CreateFieldScreen({ navigation }: CreateFieldScreenProps
     }, [reload]),
   );
 
-  const select = (id: string | null) => setValue('fieldId', id, { shouldDirty: true });
+  const select = (id: string | null) => {
+    setValue('fieldId', id, { shouldDirty: true });
+    const selectedField = id ? fields.find((field) => field.id === id) : null;
+    setValue('stageId', selectedField?.current_stage_id ?? null, { shouldDirty: true });
+    setStageMenuOpen(false);
+  };
+
+  const currentStageName = stageId === null
+    ? 'Не указан'
+    : stages.find((stage) => stage.id === stageId)?.name ?? 'Не указан';
 
   const openMap = () => {
     navigation.getParent<BottomTabNavigationProp<RootTabParamList>>()?.navigate('Map');
@@ -109,6 +134,40 @@ export default function CreateFieldScreen({ navigation }: CreateFieldScreenProps
                   accessibilityRole="radio"
                   accessibilityState={{ selected }}
                 />
+                {selected && option.id !== null ? (
+                  <Menu
+                    visible={stageMenuOpen}
+                    onDismiss={() => setStageMenuOpen(false)}
+                    contentStyle={styles.stageMenuContent}
+                    anchor={
+                      <Chip
+                        icon="chevron-down"
+                        onPress={() => setStageMenuOpen(true)}
+                        style={styles.stageChip}
+                      >
+                        {`Статус: ${currentStageName}`}
+                      </Chip>
+                    }
+                  >
+                    <Menu.Item
+                      title="Не указано"
+                      onPress={() => {
+                        setValue('stageId', null, { shouldDirty: true });
+                        setStageMenuOpen(false);
+                      }}
+                    />
+                    {selectableStages.map((stage) => (
+                      <Menu.Item
+                        key={stage.id}
+                        title={stage.name}
+                        onPress={() => {
+                          setValue('stageId', stage.id, { shouldDirty: true });
+                          setStageMenuOpen(false);
+                        }}
+                      />
+                    ))}
+                  </Menu>
+                ) : null}
               </View>
             );
           })}
@@ -127,6 +186,17 @@ const makeStyles = (theme: MD3Theme) =>
       color: theme.colors.onSurfaceVariant,
       fontSize: 14,
       textAlign: 'center',
+    },
+    stageChip: {
+      alignSelf: 'flex-start',
+      marginLeft: 16,
+      marginBottom: 8,
+      backgroundColor: theme.colors.surface,
+    },
+    stageMenuContent: {
+      borderRadius: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: theme.colors.outline,
     },
     empty: {
       alignItems: 'center',

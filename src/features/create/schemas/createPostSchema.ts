@@ -43,6 +43,8 @@ export const createPostSchema = z.object({
   photos: z.array(photoItemSchema),
   /** id строки `fields` — необязательная привязка поста к своему полю. */
   fieldId: z.string().nullable(),
+  /** `post_stages.id`; доступно только когда выбрано поле. */
+  stageId: z.number().nullable(),
 });
 
 export type CreatePostFormValues = z.infer<typeof createPostSchema>;
@@ -53,6 +55,7 @@ export const createPostDefaults: CreatePostFormValues = {
   body: '',
   photos: [],
   fieldId: null,
+  stageId: null,
 };
 
 export const CREATE_STEP_FIELDS = {

@@ -41,6 +41,7 @@ export default function EditPostScreen({ route }: EditPostScreenProps) {
           title: post.title ?? '',
           body: post.body ?? '',
           fieldId: post.field_id,
+          stageId: post.stage_id,
           photos: media
             .filter((m) => urls[m.storage_path])
             .map((m) => ({

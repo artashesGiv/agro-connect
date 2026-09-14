@@ -20,6 +20,7 @@ import { toUserMessage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
 
 import { FieldCropsDialog } from '../components/FieldCropsDialog';
+import { FieldStageDialog } from '../components/FieldStageDialog';
 import { FieldCardDialog } from '../components/FieldCardDialog';
 import { FieldFormDialog } from '../components/FieldFormDialog';
 import { MapGLView, type MapGLViewHandle } from '../components/MapGLView';
@@ -101,6 +102,7 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
   const [pending, setPending] = useState<Pending | null>(null);
   /** Поле, по которому тапнули: показываем карточку. */
   const [cropsField, setCropsField] = useState<Field | null>(null);
+  const [stageField, setStageField] = useState<Field | null>(null);
   const [cardFieldId, setCardFieldId] = useState<string | null>(null);
   /** Поле, чью геометрию сейчас правим. `null` — создаём новое. */
   const [geometryTargetId, setGeometryTargetId] = useState<string | null>(null);
@@ -628,6 +630,10 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
         }}
         onEditInfo={editInfo}
         onEditGeometry={editGeometry}
+        onEditStage={() => {
+          setStageField(cardField);
+          setCardFieldId(null);
+        }}
         onDelete={requestDeleteField}
         onViewOwner={() => {
           if (!cardField) return;
@@ -655,6 +661,22 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
           onSaved={() => {
             setCropsField(null);
             setSnack('Культуры поля сохранены');
+            void reload();
+          }}
+        />
+      ) : null}
+
+      {stageField ? (
+        <FieldStageDialog
+          key={stageField.id}
+          field={stageField}
+          onClose={() => {
+            setCardFieldId(stageField.id);
+            setStageField(null);
+          }}
+          onSaved={() => {
+            setStageField(null);
+            setSnack('Статус поля сохранён');
             void reload();
           }}
         />
