@@ -50,7 +50,7 @@ function mapPost(
       .map((media) => urls[media.storage_path])
       .filter((url): url is string => Boolean(url)),
     reactions: summarizeReactions(post.post_reactions ?? [], activeTypes, viewerId),
-    commentCount: post.answers?.[0]?.count ?? 0,
+    commentCount: (post.answers?.[0]?.count ?? 0) + (post.post_comments?.[0]?.count ?? 0),
   };
 }
 
