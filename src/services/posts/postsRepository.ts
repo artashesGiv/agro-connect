@@ -57,6 +57,9 @@ const feedSelect = (innerPostType: boolean) => `
   ),
   answers (
     count
+  ),
+  post_comments (
+    count
   )
 `;
 
@@ -89,6 +92,8 @@ export type FeedPost = {
   post_reactions: { reaction_type_id: number; user_id: string }[];
   /** PostgREST отдаёт агрегат вложенной таблицы как `[{ count }]`. */
   answers: { count: number }[];
+  /** Ответы ИИ-помощника (`post_comments`) — отдельная таблица, см. useComments. */
+  post_comments: { count: number }[];
 };
 
 export type FeedFilter = {

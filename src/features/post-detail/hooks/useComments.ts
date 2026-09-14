@@ -65,7 +65,12 @@ function mapRow(row: CommentRow, viewerId: string | undefined): Comment {
 function mapAiRow(row: AiCommentRow): Comment {
   return {
     id: row.id,
-    author: { nickname: AI_AUTHOR_NAME },
+    author: {
+      nickname: row.system_actors?.name ?? AI_AUTHOR_NAME,
+      avatarUrl: row.system_actors?.avatar_path
+        ? storage.getAvatarUrl(row.system_actors.avatar_path)
+        : undefined,
+    },
     body: row.body,
     createdAt: row.created_at,
     editedAt: row.updated_at !== row.created_at ? row.updated_at : undefined,

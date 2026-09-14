@@ -13,15 +13,18 @@ import { AppHeader } from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { CropFilterSelect } from '@/components/CropFilterSelect';
 import { ExpandingSearchField } from '@/components/ExpandingSearchField';
+import { PendingPostCard } from '@/components/PendingPostCard';
 import { PostCard } from '@/components/PostCard';
 import { useCrops } from '@/hooks/useCrops';
 import { useFeed, type FeedItem } from '@/hooks/useFeed';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { usePendingPosts } from '@/hooks/usePendingPosts';
 import { useReactions } from '@/hooks/useReactions';
 import type { QuestionsScreenProps } from '@/navigation/types';
 import { useAuth } from '@/services/auth';
 import { deletePost } from '@/services/posts';
 import { toggleReactionSummary } from '@/services/reactions';
-import { toUserMessage } from '@/services/supabase';
+import { storage, toUserMessage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
 
 /** Пауза после последнего нажатия клавиши перед тем, как поиск уйдёт в запрос. */
@@ -35,9 +38,16 @@ const SEARCH_DEBOUNCE_MS = 400;
 export default function QuestionsScreen({ navigation }: QuestionsScreenProps) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const isOnline = useNetworkStatus();
   const { setReaction } = useReactions();
   const { crops } = useCrops();
+  const {
+    items: pendingItems,
+    processing: pendingSending,
+    retryAll: retryPendingPosts,
+    remove: removePendingPost,
+  } = usePendingPosts();
 
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchInput, setSearchInput] = useState('');
@@ -74,6 +84,22 @@ export default function QuestionsScreen({ navigation }: QuestionsScreenProps) {
     postTypeCode: 'question',
   });
   const filtered = Boolean(search) || cropIds.length > 0;
+
+  // Показываем офлайн-черновики только на «чистой» ленте: у отложенного поста
+  // культура ещё не известна (её вычисляет сервер по полю), под фильтр по
+  // культуре/поиск подвести его нельзя.
+  const pendingForFeed = filtered
+    ? []
+    : pendingItems.filter((item) => item.input.postTypeCode === 'question');
+  const [pendingDeleteQueueId, setPendingDeleteQueueId] = useState<string | null>(null);
+  const confirmDeletePending = useCallback(async () => {
+    if (!pendingDeleteQueueId) return;
+    await removePendingPost(pendingDeleteQueueId);
+    setPendingDeleteQueueId(null);
+  }, [pendingDeleteQueueId, removePendingPost]);
+  const pendingAvatarUrl = profile?.avatar_path
+    ? storage.getAvatarUrl(profile.avatar_path)
+    : undefined;
 
   /** id поста, открытого в PostDetail/EditPost — перечитываем его при возврате. */
   const openedRef = useRef<string | null>(null);
@@ -181,6 +207,7 @@ export default function QuestionsScreen({ navigation }: QuestionsScreenProps) {
           title={item.title}
           description={item.description}
           images={item.images}
+          photosUnavailable={!isOnline}
           onAuthorPress={() => openAuthor(item.author.id, item.isMine)}
           createdAt={item.createdAt}
           reactions={item.reactions}
@@ -200,7 +227,7 @@ export default function QuestionsScreen({ navigation }: QuestionsScreenProps) {
         />
       );
     },
-    [openPost, editPost, handleToggleReaction, openFieldOnMap, openAuthor],
+    [openPost, editPost, handleToggleReaction, openFieldOnMap, openAuthor, isOnline],
   );
 
   return (
@@ -225,9 +252,9 @@ export default function QuestionsScreen({ navigation }: QuestionsScreenProps) {
       />
       <CropFilterSelect crops={crops} value={cropIds} onChange={setCropIds} />
 
-      {loading ? (
+      {loading && items.length === 0 && pendingForFeed.length === 0 ? (
         <ActivityIndicator style={styles.loader} />
-      ) : error && items.length === 0 ? (
+      ) : error && items.length === 0 && pendingForFeed.length === 0 ? (
         <View style={styles.center}>
           <Text style={styles.stateText}>{error}</Text>
           <Button mode="contained" onPress={() => void retry()}>
@@ -245,10 +272,33 @@ export default function QuestionsScreen({ navigation }: QuestionsScreenProps) {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />
           }
+          ListHeaderComponent={
+            pendingForFeed.length > 0 ? (
+              <View>
+                {pendingForFeed.map((post) => (
+                  <PendingPostCard
+                    key={post.id}
+                    post={post}
+                    author={{
+                      id: user?.id ?? '',
+                      nickname: profile?.name ?? 'вы',
+                      avatarUrl: pendingAvatarUrl,
+                      reputation: profile?.reputation ?? 0,
+                    }}
+                    sending={pendingSending}
+                    onRetry={retryPendingPosts}
+                    onDelete={() => setPendingDeleteQueueId(post.id)}
+                  />
+                ))}
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
-            <Text style={styles.stateText}>
-              {filtered ? 'Ничего не найдено' : 'Вопросов пока нет'}
-            </Text>
+            pendingForFeed.length === 0 ? (
+              <Text style={styles.stateText}>
+                {filtered ? 'Ничего не найдено' : 'Вопросов пока нет'}
+              </Text>
+            ) : null
           }
           ListFooterComponent={
             loadingMore ? (
@@ -259,6 +309,16 @@ export default function QuestionsScreen({ navigation }: QuestionsScreenProps) {
           }
         />
       )}
+
+      <ConfirmDialog
+        visible={pendingDeleteQueueId !== null}
+        title="Удалить черновик?"
+        message="Пост так и не будет отправлен. Это действие нельзя отменить."
+        confirmLabel="Удалить"
+        destructive
+        onConfirm={confirmDeletePending}
+        onCancel={() => setPendingDeleteQueueId(null)}
+      />
 
       <ConfirmDialog
         visible={pendingDeleteId !== null}

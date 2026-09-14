@@ -7,13 +7,23 @@ import { HelperText, Text } from 'react-native-paper';
 import { Icon } from '@/components/Icon';
 import { PostCard } from '@/components/PostCard';
 import { useFields } from '@/hooks/useFields';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import type {
   CreatePreviewScreenProps,
   RootTabParamList,
 } from '@/navigation/types';
 import { triggerPostAiProcessing } from '@/services/ai';
 import { useAuth } from '@/services/auth';
-import { createPostWithMedia, updatePostWithMedia } from '@/services/posts';
+import {
+  createPostWithMedia,
+  updatePostWithMedia,
+  type CreatePostInput,
+} from '@/services/posts';
+import {
+  deletePersistedPhoto,
+  enqueuePendingPost,
+  isNetworkError,
+} from '@/services/postQueue';
 import { storage, toUserMessage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
 
@@ -26,6 +36,7 @@ export default function CreatePreviewScreen({
 }: CreatePreviewScreenProps) {
   const theme = useAppTheme();
   const { user, profile } = useAuth();
+  const isOnline = useNetworkStatus();
   const { postId } = useCreatePostMeta();
   const isEdit = postId !== null;
   const { handleSubmit, formState, reset, getValues } =
@@ -46,6 +57,23 @@ export default function CreatePreviewScreen({
     ? storage.getAvatarUrl(profile.avatar_path)
     : undefined;
 
+  /** Кладём пост в очередь и уводим на профиль — там он виден с «Ожидает отправки». */
+  const queueAndLeave = async (
+    input: CreatePostInput,
+    newPhotos: { uri: string; mimeType: string }[],
+  ) => {
+    await enqueuePendingPost({ authorId: user!.id, input, photos: newPhotos });
+    reset();
+    navigation
+      .getParent<BottomTabNavigationProp<RootTabParamList>>()
+      ?.navigate('Profile', {
+        refresh: true,
+        notice:
+          'Нет подключения, запись будет сохранена и отправлена как только появится соединение',
+      });
+    navigation.popToTop();
+  };
+
   const submit = handleSubmit(async (data) => {
     if (!user) {
       setError('Сессия не найдена. Войдите заново.');
@@ -65,19 +93,30 @@ export default function CreatePreviewScreen({
 
     try {
       if (isEdit) {
+        // Редактирование остаётся строго «только онлайн»: экран и так требует
+        // сеть, чтобы открыться (грузит пост и подписанные ссылки на фото).
         await updatePostWithMedia(postId, user.id, input, {
           newPhotos,
           keepMediaIds: data.photos
             .filter((photo) => photo.kind === 'existing')
             .map((photo) => photo.id),
         });
+        for (const photo of newPhotos) deletePersistedPhoto(photo.uri);
         void triggerPostAiProcessing(postId);
         // Родитель мастера — стек профиля; закрываем экран EditPost.
         navigation.getParent()?.goBack();
         return;
       }
 
+      // Известно заранее, что сети нет — не тратимся на заведомо провальный
+      // запрос, сразу в очередь.
+      if (!isOnline) {
+        await queueAndLeave(input, newPhotos);
+        return;
+      }
+
       const createdPostId = await createPostWithMedia(user.id, input, newPhotos);
+      for (const photo of newPhotos) deletePersistedPhoto(photo.uri);
       void triggerPostAiProcessing(createdPostId);
       reset();
       // Родитель мастера — таб-навигатор; уводим на «Профиль», где виден пост.
@@ -87,6 +126,12 @@ export default function CreatePreviewScreen({
         ?.navigate('Profile', { refresh: true });
       navigation.popToTop();
     } catch (cause) {
+      // NetInfo мог ошибиться и посчитать сеть доступной — реальный сбой сети
+      // при самой отправке обрабатываем так же, как если бы знали заранее.
+      if (!isEdit && isNetworkError(cause)) {
+        await queueAndLeave(input, newPhotos);
+        return;
+      }
       setError(toUserMessage(cause));
     }
   });

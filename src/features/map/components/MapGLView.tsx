@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Button, type MD3Theme } from 'react-native-paper';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
@@ -41,8 +41,15 @@ const MAPGL_KEY = process.env.EXPO_PUBLIC_2GIS_MAPGL_KEY;
  */
 const MAPGL_BASE_URL = 'https://localhost';
 
-/** Если карта не сообщила о готовности за это время — считаем, что не взлетела. */
-const READY_TIMEOUT_MS = 15000;
+/**
+ * Если карта не сообщила о готовности за это время — считаем, что не взлетела.
+ * С запасом на холодный старт: вкладка `Map` смонтирована с `lazy: false`
+ * (см. `MainTabs.tsx`) и её `WebView` поднимается одновременно с остальной
+ * инициализацией приложения (сессия, лента на Home) — на медленном
+ * устройстве загрузка скрипта MapGL в это время объективно дольше, чем при
+ * ручном «Повторить», когда всё остальное уже улеглось.
+ */
+const READY_TIMEOUT_MS = 20000;
 
 export type MapGLViewHandle = {
   /** Перелететь к точке. Вызовы до готовности карты применяются после неё. */
@@ -115,6 +122,21 @@ export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function Ma
   // `attempt` пересоздаёт WebView: перезагрузить страницу, у которой не
   // загрузился скрипт MapGL, надёжнее целиком, чем через reload().
   const [attempt, setAttempt] = useState(0);
+  /**
+   * Вкладка `Map` монтируется вместе со всем приложением (`lazy: false` в
+   * `MainTabs.tsx`), поэтому без этой отсрочки `WebView` поднимается прямо в
+   * гуще холодного старта — на одном JS-потоке с восстановлением сессии и
+   * загрузкой ленты Home, — и загрузка скрипта MapGL регулярно не укладывается
+   * в таймаут. `requestIdleCallback` откладывает создание `WebView` до
+   * момента, когда поток освободится, а не бьёт по нему сразу; таймаут —
+   * подстраховка на случай, если поток занят непрерывно.
+   */
+  const [readyToMount, setReadyToMount] = useState(false);
+
+  useEffect(() => {
+    const id = requestIdleCallback(() => setReadyToMount(true), { timeout: 2000 });
+    return () => cancelIdleCallback(id);
+  }, []);
 
   // Цвет полей/маркеров сюда не входит — он теперь считается на цвет каждого
   // поля отдельно, в `getFieldMapStyle` (по культуре и своё/чужое).
@@ -252,7 +274,7 @@ export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function Ma
         <Text style={styles.errorTitle}>Карта не загрузилась</Text>
         <Text style={styles.errorText}>
           {MAPGL_KEY
-            ? 'Проверьте подключение к интернету. Если оно есть — возможно, истёк ключ 2GIS.'
+            ? 'Проверьте подключение к интернету и попробуйте ещё раз.'
             : 'Не задан EXPO_PUBLIC_2GIS_MAPGL_KEY. Скопируйте .env.example в .env и перезапустите dev-сервер.'}
         </Text>
         {MAPGL_KEY ? (
@@ -266,26 +288,28 @@ export const MapGLView = forwardRef<MapGLViewHandle, MapGLViewProps>(function Ma
 
   return (
     <View style={styles.container}>
-      <WebView
-        key={attempt}
-        ref={webViewRef}
-        source={{ html, baseUrl: MAPGL_BASE_URL }}
-        originWhitelist={['https://*']}
-        onMessage={handleMessage}
-        onLoadStart={handleLoadStart}
-        onError={() => fail('WebView не смог открыть страницу')}
-        onHttpError={() => fail('WebView получил HTTP-ошибку')}
-        // WebGL без аппаратного слоя не рисуется.
-        androidLayerType="hardware"
-        javaScriptEnabled
-        domStorageEnabled
-        // Скроллить нечего: страница ровно в размер карты, а перехват жестов
-        // мешал бы панорамированию.
-        scrollEnabled={false}
-        overScrollMode="never"
-        style={styles.webView}
-        containerStyle={styles.webViewContainer}
-      />
+      {readyToMount ? (
+        <WebView
+          key={attempt}
+          ref={webViewRef}
+          source={{ html, baseUrl: MAPGL_BASE_URL }}
+          originWhitelist={['https://*']}
+          onMessage={handleMessage}
+          onLoadStart={handleLoadStart}
+          onError={() => fail('WebView не смог открыть страницу')}
+          onHttpError={() => fail('WebView получил HTTP-ошибку')}
+          // WebGL без аппаратного слоя не рисуется.
+          androidLayerType="hardware"
+          javaScriptEnabled
+          domStorageEnabled
+          // Скроллить нечего: страница ровно в размер карты, а перехват жестов
+          // мешал бы панорамированию.
+          scrollEnabled={false}
+          overScrollMode="never"
+          style={styles.webView}
+          containerStyle={styles.webViewContainer}
+        />
+      ) : null}
       {status === 'loading' ? (
         <View style={styles.loadingOverlay} pointerEvents="none">
           <ActivityIndicator size="large" color={theme.colors.primary} />

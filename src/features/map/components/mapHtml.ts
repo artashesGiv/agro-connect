@@ -658,21 +658,6 @@ export function buildMapHtml(key: string, palette: MapPalette): string {
             }
           }
 
-          // ВРЕМЕННО: диагностика — почему у некоторых культур на контуре не
-          // появляется иконка. Убрать после починки.
-          var debugRingInfo2 = [];
-          for (var d2 = 0; d2 < shapes.length; d2++) {
-            if (shapes[d2].ring) {
-              debugRingInfo2.push(
-                shapes[d2].id.slice(0, 8) +
-                  ':icon=' + shapes[d2].icon +
-                  ':center=' + JSON.stringify(shapes[d2].center) +
-                  ':willSkip=' + (!shapes[d2].center || (shapes[d2].ring && !shapes[d2].icon))
-              );
-            }
-          }
-          send({ type: 'warning', message: 'DEBUG2 ring: ' + debugRingInfo2.join(' | ') });
-
           // Маркер в центре нужен всегда для поля без контура (это его
           // единственное изображение), а для поля с контуром — только если
           // есть иконка культуры: иначе на каждом контуре появлялась бы

@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 
 import { AuthNavigator } from '../features/auth';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { useAuth } from '@/services/auth';
 import { appTheme, navigationTheme } from '@/theme';
 import { AppNavigator } from './AppNavigator';
@@ -24,9 +25,14 @@ export function RootNavigator() {
   }
 
   return (
-    <NavigationContainer theme={navigationTheme}>
-      <StatusBar style="dark" />
-      {status === 'authenticated' ? <AppNavigator /> : <AuthNavigator />}
-    </NavigationContainer>
+    <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
+      <OfflineBanner />
+      <View style={{ flex: 1 }}>
+        <NavigationContainer theme={navigationTheme}>
+          <StatusBar style="dark" />
+          {status === 'authenticated' ? <AppNavigator /> : <AuthNavigator />}
+        </NavigationContainer>
+      </View>
+    </View>
   );
 }

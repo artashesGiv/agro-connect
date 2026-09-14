@@ -71,6 +71,8 @@ type PostCardProps = {
   title: string;
   description?: string;
   images?: string[];
+  /** Показать плейсхолдер вместо фото — см. `PostPhotos`. */
+  photosUnavailable?: boolean;
   /** Без обработчика аватар/ник не кликабельны. */
   onAuthorPress?: () => void;
   /** Дата создания — показывается в ряду действий справа, в том же формате, что и у комментариев. */
@@ -103,6 +105,7 @@ export function PostCard({
   title,
   description,
   images,
+  photosUnavailable,
   onAuthorPress,
   createdAt,
   reactions,
@@ -204,7 +207,9 @@ export function PostCard({
         ) : null}
       </View>
 
-      {images && images.length > 0 ? <PostPhotos images={images} /> : null}
+      {images && images.length > 0 ? (
+        <PostPhotos images={images} unavailable={photosUnavailable} />
+      ) : null}
 
       <View style={styles.actions}>
         <View style={styles.actionsLeft}>

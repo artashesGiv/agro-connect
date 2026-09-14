@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useAuth } from '@/services/auth';
 import { getFeed, getPost, type FeedPost } from '@/services/posts';
+import { subscribePostSent } from '@/services/postQueue';
 import { summarizeReactions, type ReactionSummary } from '@/services/reactions';
 import {
   dictionaries,
@@ -54,7 +56,7 @@ function mapPost(
       .map((media) => urls[media.storage_path])
       .filter((url): url is string => Boolean(url)),
     reactions: summarizeReactions(post.post_reactions ?? [], activeTypes, viewerId),
-    commentCount: post.answers?.[0]?.count ?? 0,
+    commentCount: (post.answers?.[0]?.count ?? 0) + (post.post_comments?.[0]?.count ?? 0),
   };
 }
 
@@ -67,6 +69,7 @@ function mapPost(
 export function useUserPosts(userId?: string) {
   const { user } = useAuth();
   const viewerId = user?.id;
+  const isOnline = useNetworkStatus();
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +82,14 @@ export function useUserPosts(userId?: string) {
     }
     setLoading(true);
     setError(null);
+    // Своих постов не кэшируем (см. SPEC.md — офлайн покрывает только «Мои
+    // поля» и ленту), но ждать реального таймаута запроса, когда сети точно
+    // нет, всё равно незачем — сразу показываем понятный текст.
+    if (!isOnline) {
+      setError('Нет подключения.');
+      setLoading(false);
+      return;
+    }
     try {
       const [feed, activeTypes] = await Promise.all([
         getFeed({ authorId: userId, limit: 30 }),
@@ -94,10 +105,11 @@ export function useUserPosts(userId?: string) {
     } finally {
       setLoading(false);
     }
-  }, [userId, viewerId]);
+  }, [userId, viewerId, isOnline]);
 
   const syncItem = useCallback(
     async (id: string) => {
+      if (!isOnline) return;
       try {
         const post = await getPost(id);
         if (!post) {
@@ -114,12 +126,16 @@ export function useUserPosts(userId?: string) {
         // Тихо: один пост не обновился — не рушим список.
       }
     },
-    [viewerId],
+    [viewerId, isOnline],
   );
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Пост из офлайн-очереди отправился в фоне — перечитываем «Мои посты» сами,
+  // без ручного pull-to-refresh.
+  useEffect(() => subscribePostSent(() => void load()), [load]);
 
   return { posts, setPosts, loading, error, reload: load, syncItem };
 }

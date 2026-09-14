@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { readCache, writeCache } from '@/services/cache';
 import { useAuth } from '@/services/auth';
 import { getFeed, getPost, type FeedPost } from '@/services/posts';
+import { subscribePostSent } from '@/services/postQueue';
 import { summarizeReactions, type ReactionSummary } from '@/services/reactions';
 import {
   dictionaries,
@@ -9,6 +11,11 @@ import {
   toUserMessage,
   type ReactionType,
 } from '@/services/supabase';
+
+import { useNetworkStatus } from './useNetworkStatus';
+
+/** Отдельная от `toUserMessage` — это не ошибка сервера, а известное заранее состояние. */
+const OFFLINE_MESSAGE = 'Нет подключения.';
 
 /** Страница по 15 постов; keyset-курсор — `{ createdAt, id }` последнего. */
 const PAGE = 15;
@@ -29,6 +36,14 @@ export type FeedItem = {
 };
 
 type Cursor = { createdAt: string; id: string } | undefined;
+
+/**
+ * Кэшируем только «чистую» ленту — без поиска/фильтра по культуре/полю. Так
+ * читают Home и Questions в обычном режиме; для произвольной комбинации
+ * фильтров кэш только вводил бы в заблуждение (показал бы данные не по тому
+ * запросу). Ключ — по `postTypeCode`, чтобы Home и Questions не путали кэши.
+ */
+const feedCacheKey = (postTypeCode?: string) => `feed:${postTypeCode ?? 'all'}`;
 
 function mapItem(
   post: FeedPost,
@@ -57,7 +72,7 @@ function mapItem(
       .map((media) => urls[media.storage_path])
       .filter((url): url is string => Boolean(url)),
     reactions: summarizeReactions(post.post_reactions ?? [], activeTypes, viewerId),
-    commentCount: post.answers?.[0]?.count ?? 0,
+    commentCount: (post.answers?.[0]?.count ?? 0) + (post.post_comments?.[0]?.count ?? 0),
   };
 }
 
@@ -83,6 +98,7 @@ export type FeedFilter = {
 export function useFeed(filter: FeedFilter = {}) {
   const { user } = useAuth();
   const viewerId = user?.id;
+  const isOnline = useNetworkStatus();
   const { cropIds, search, postTypeCode, fieldId } = filter;
 
   const [items, setItems] = useState<FeedItem[]>([]);
@@ -107,36 +123,76 @@ export function useFeed(filter: FeedFilter = {}) {
     [viewerId, cropIds, search, postTypeCode, fieldId],
   );
 
+  const cacheable = !search && !cropIds?.length && !fieldId;
+
+  /**
+   * Первая страница с фолбэком в кэш при ошибке (в первую очередь — без сети).
+   * `fromCache: true` значит «дальше страниц нет» — подгрузка офлайн всё равно
+   * не сработает, а с `hasMore: true` список рисовал бы бесконечный футер.
+   *
+   * Если `useNetworkStatus` уже знает, что сети нет, запрос вообще не уходит:
+   * при «подключены к Wi-Fi без интернета» голый `fetch` может виснуть на
+   * TCP-таймаут в десятки секунд вместо мгновенной ошибки — NetInfo это
+   * состояние уже определил, ждать реального сбоя запроса незачем.
+   */
+  const loadPage = useCallback(async (): Promise<{
+    page: FeedItem[];
+    fromCache: boolean;
+  }> => {
+    if (!isOnline) {
+      if (cacheable) {
+        const cached = await readCache<FeedItem[]>(feedCacheKey(postTypeCode));
+        if (cached) return { page: cached, fromCache: true };
+      }
+      throw new Error(OFFLINE_MESSAGE);
+    }
+    try {
+      const page = await fetchPage(undefined);
+      if (cacheable) void writeCache(feedCacheKey(postTypeCode), page);
+      return { page, fromCache: false };
+    } catch (cause) {
+      if (cacheable) {
+        const cached = await readCache<FeedItem[]>(feedCacheKey(postTypeCode));
+        if (cached) return { page: cached, fromCache: true };
+      }
+      throw cause;
+    }
+  }, [fetchPage, cacheable, postTypeCode, isOnline]);
+
   const loadFirst = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const page = await fetchPage(undefined);
+      const { page, fromCache } = await loadPage();
       setItems(page);
-      setHasMore(page.length === PAGE);
+      setHasMore(!fromCache && page.length === PAGE);
     } catch (cause) {
       setError(toUserMessage(cause));
     } finally {
       setLoading(false);
     }
-  }, [fetchPage]);
+  }, [loadPage]);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
     setError(null);
     try {
-      const page = await fetchPage(undefined);
+      const { page, fromCache } = await loadPage();
       setItems(page);
-      setHasMore(page.length === PAGE);
+      setHasMore(!fromCache && page.length === PAGE);
     } catch (cause) {
       setError(toUserMessage(cause));
     } finally {
       setRefreshing(false);
     }
-  }, [fetchPage]);
+  }, [loadPage]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || loading || refreshing || !hasMore || items.length === 0) return;
+    if (!isOnline) {
+      setError(OFFLINE_MESSAGE);
+      return;
+    }
     setLoadingMore(true);
     try {
       const last = items[items.length - 1];
@@ -151,7 +207,7 @@ export function useFeed(filter: FeedFilter = {}) {
     } finally {
       setLoadingMore(false);
     }
-  }, [items, loadingMore, loading, refreshing, hasMore, fetchPage]);
+  }, [items, loadingMore, loading, refreshing, hasMore, fetchPage, isOnline]);
 
   /**
    * Перечитать один пост (после возврата с PostDetail / EditPost): свежие
@@ -160,6 +216,7 @@ export function useFeed(filter: FeedFilter = {}) {
    */
   const syncItem = useCallback(
     async (id: string) => {
+      if (!isOnline) return;
       try {
         const post = await getPost(id);
         if (!post) {
@@ -176,12 +233,16 @@ export function useFeed(filter: FeedFilter = {}) {
         // Тихо: не смогли обновить один пост — не повод рушить ленту.
       }
     },
-    [viewerId],
+    [viewerId, isOnline],
   );
 
   useEffect(() => {
     void loadFirst();
   }, [loadFirst]);
+
+  // Пост из офлайн-очереди отправился в фоне (см. `processPendingPosts`) —
+  // перечитываем ленту сами, без ручного pull-to-refresh.
+  useEffect(() => subscribePostSent(() => void refresh()), [refresh]);
 
   return {
     items,
