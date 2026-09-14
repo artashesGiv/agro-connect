@@ -448,16 +448,18 @@ UPDATE в JSON-колонки `fields.crops` и `fields.current_crop` в фор�
   сохранения поста фронт вызывает Edge Function `process-ai-post({ post_id })`
   fire-and-forget (`src/services/ai`) — вся логика (проверка `@ai`, запрос к
   Kie.ai, запись ответа) на бэкенде. Ответ пишется в отдельную таблицу
-  `post_comments` (не `answers` — это подтверждено прямым тестовым вызовом
-  функции), автор — `system_actor_id`, без строки в `profiles`. Фронт читает
-  `post_comments` параллельно с `answers` (`listAiComments` в
-  `commentsRepository.ts`) и мёржит в общий список по времени; ИИ-комментарий
-  помечается по `system_actor_id !== null`, без голосов и меню правки.
-  Отдельного индикатора «ИИ обрабатывает» нет — ответ появляется при
-  следующей перезагрузке списка (переход на экран поста уже перезагружает
-  комментарии). Типы `post_ai_runs`/`post_comments` в
-  `src/types/database.types.ts` добавлены вручную по данным диагностического
-  запуска, не сгенерированы `npm run types:supabase` — см. открытый вопрос 7.
+  `post_comments` (не `answers`), автор — `system_actor_id` (FK на новую
+  таблицу `system_actors: id, code, name, avatar_path, description`), без
+  строки в `profiles`. Фронт читает `post_comments` параллельно с `answers`
+  (`listAiComments` в `commentsRepository.ts`, с джойном `system_actors` на
+  имя/аватар) и мёржит в общий список по времени; ИИ-комментарий помечается
+  по `system_actor_id !== null`, без голосов и меню правки. Отдельного
+  индикатора «ИИ обрабатывает» нет — ответ появляется при следующей
+  перезагрузке списка (переход на экран поста уже перезагружает комментарии).
+  Схема подтверждена официальным `database.types.ts` от бэкенда (получен
+  14.09.2026) и живым тестовым прогоном (включая джойн на `system_actors` —
+  вернул `name: "ИИ-помощник", avatar_path: null`) — остались только пункты
+  ниже (см. вопрос 7).
 
 Ещё не обёрнуто намеренно: принятый ответ на вопрос (`answers` — нет поля-флага
 на бэке), закладки.
@@ -489,29 +491,25 @@ UPDATE в JSON-колонки `fields.crops` и `fields.current_crop` в фор�
 5. **Начисление репутации не реализовано** — `profiles.reputation` всегда `0`.
 6. Профиль хранит только `name` / `specialization` / `region`. Если продукту
    нужны фамилия и никнейм — это изменение схемы на стороне бэкенда.
-7. **ИИ-комментарии (`process-ai-post`) — схема выяснена тестовым вызовом,
-   но не подтверждена официально бэкендом.** Диагностический прогон
-   (регистрация тестового юзера → пост с `@ai` → прямой вызов функции)
-   показал реальную форму ответа:
-   - `post_ai_runs`: `id, post_id, requested_by, feature ('mention_reply'),
-     status ('completed' в наблюдении — какие ещё статусы и что при ошибке,
-     неизвестно), input, result, metadata, error, created_at, started_at,
-     completed_at, updated_at`.
-   - `post_comments`: `id, post_id, author_id (null у ИИ), system_actor_id
-     (не null у ИИ), body, ai_run_id, parent_comment_id, created_at,
-     updated_at`. `answers` в этом сценарии осталась пустой.
-   - Наблюдался один фиксированный `system_actor_id` — но нет гарантии, что
-     он стабилен между окружениями/во времени; фронт опирается только на
-     «не null», а не на конкретное значение.
-   Типы добавлены в `src/types/database.types.ts` вручную по этим данным.
-   Нужно от бэкенда: (а) подтвердить структуру официально и прислать
-   обновлённые `api-docs/database.types.ts` + `SUPABASE_CURRENT_SCHEMA.md`,
-   как передавали раньше; (б) список всех значений `status` и поведение при
-   ошибке генерации (что в `error`, появляется ли что-то в `post_comments`);
-   (в) стабилен ли `system_actor_id`, можно ли на него полагаться;
-   (г) можно ли клиенту читать `post_ai_runs` — сейчас RLS это не запрещает,
-   но фронт им не пользуется; (д) `parent_comment_id` в `post_comments` —
-   заготовка под ветки/цепочки ответов, или используется уже сейчас?
+7. **ИИ-комментарии (`process-ai-post`) — схема подтверждена, остались
+   поведенческие вопросы.** Официальный `database.types.ts` от бэкенда
+   (14.09.2026) и живой тестовый прогон закрыли структуру: `post_ai_runs`
+   (`id, post_id, requested_by, feature, status, input, result, metadata,
+   model, provider, error, created_at, started_at, completed_at, updated_at`),
+   `post_comments` (`id, post_id, author_id, system_actor_id, body,
+   ai_run_id, parent_comment_id, created_at, updated_at`), новая таблица
+   `system_actors` (`id, code, name, avatar_path, description`) — на неё
+   ссылается `post_comments.system_actor_id`, джойн проверен вживую. Также
+   в контракте есть RPC `finalize_post_ai_run` (судя по имени — серверная,
+   для самой Edge Function) и `build_post_author_snapshot`. Открыто:
+   (а) полный список значений `status` и поведение при ошибке генерации
+   (наблюдали только `completed`; что в `error`, появляется ли что-то в
+   `post_comments` при сбое); (б) можно ли клиенту читать `post_ai_runs` —
+   RLS сейчас не запрещает, но фронт им не пользуется; (в) `parent_comment_id`
+   в `post_comments` — заготовка под ветки/цепочки ответов, или уже
+   используется; (г) `posts.author: Json` и `build_post_author_snapshot` —
+   денормализованный снэпшот автора, фронт продолжает джойнить `profiles`
+   напрямую, уточнить, не заменяет ли это со временем текущий подход.
 
 ## Требования, которые нужно уточнить
 

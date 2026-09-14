@@ -59,6 +59,7 @@ export type Database = {
           body: string
           created_at: string
           id: string
+          parent_answer_id: string | null
           post_id: string
           updated_at: string
         }
@@ -67,6 +68,7 @@ export type Database = {
           body: string
           created_at?: string
           id?: string
+          parent_answer_id?: string | null
           post_id: string
           updated_at?: string
         }
@@ -75,6 +77,7 @@ export type Database = {
           body?: string
           created_at?: string
           id?: string
+          parent_answer_id?: string | null
           post_id?: string
           updated_at?: string
         }
@@ -84,6 +87,13 @@ export type Database = {
             columns: ["author_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "answers_parent_answer_id_fkey"
+            columns: ["parent_answer_id"]
+            isOneToOne: false
+            referencedRelation: "answers"
             referencedColumns: ["id"]
           },
           {
@@ -121,11 +131,12 @@ export type Database = {
       }
       fields: {
         Row: {
-          crops: Json | null
-          current_crop: Json | null
           boundary: unknown
           center: unknown
           created_at: string
+          crops: Json
+          current_crop: Json | null
+          current_stage_id: number | null
           id: string
           name: string
           owner_id: string
@@ -133,11 +144,12 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          crops?: Json | null
-          current_crop?: Json | null
           boundary?: unknown
           center?: unknown
           created_at?: string
+          crops?: Json
+          current_crop?: Json | null
+          current_stage_id?: number | null
           id?: string
           name: string
           owner_id: string
@@ -145,11 +157,12 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          crops?: Json | null
-          current_crop?: Json | null
           boundary?: unknown
           center?: unknown
           created_at?: string
+          crops?: Json
+          current_crop?: Json | null
+          current_stage_id?: number | null
           id?: string
           name?: string
           owner_id?: string
@@ -157,6 +170,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fields_current_stage_id_fkey"
+            columns: ["current_stage_id"]
+            isOneToOne: false
+            referencedRelation: "post_stages"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "fields_owner_id_fkey"
             columns: ["owner_id"]
@@ -166,20 +186,18 @@ export type Database = {
           },
         ]
       }
-      // post_ai_runs / post_comments добавлены вручную по факту реального ответа
-      // process-ai-post (диагностический тестовый вызов), не сгенерированы
-      // `npm run types:supabase` — заменить официальными типами, когда бэкенд
-      // пришлёт обновлённые api-docs/database.types.ts (см. SPEC.md, п.7).
       post_ai_runs: {
         Row: {
           completed_at: string | null
           created_at: string
-          error: Json | null
+          error: string | null
           feature: string
           id: string
-          input: Json | null
-          metadata: Json | null
+          input: Json
+          metadata: Json
+          model: string | null
           post_id: string
+          provider: string | null
           requested_by: string | null
           result: Json | null
           started_at: string | null
@@ -189,12 +207,14 @@ export type Database = {
         Insert: {
           completed_at?: string | null
           created_at?: string
-          error?: Json | null
+          error?: string | null
           feature?: string
           id?: string
-          input?: Json | null
-          metadata?: Json | null
+          input?: Json
+          metadata?: Json
+          model?: string | null
           post_id: string
+          provider?: string | null
           requested_by?: string | null
           result?: Json | null
           started_at?: string | null
@@ -204,12 +224,14 @@ export type Database = {
         Update: {
           completed_at?: string | null
           created_at?: string
-          error?: Json | null
+          error?: string | null
           feature?: string
           id?: string
-          input?: Json | null
-          metadata?: Json | null
+          input?: Json
+          metadata?: Json
+          model?: string | null
           post_id?: string
+          provider?: string | null
           requested_by?: string | null
           result?: Json | null
           started_at?: string | null
@@ -222,6 +244,13 @@ export type Database = {
             columns: ["post_id"]
             isOneToOne: false
             referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_ai_runs_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -262,6 +291,27 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "post_comments_ai_run_id_fkey"
+            columns: ["ai_run_id"]
+            isOneToOne: true
+            referencedRelation: "post_ai_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_comments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_comments_parent_comment_id_fkey"
+            columns: ["parent_comment_id"]
+            isOneToOne: false
+            referencedRelation: "post_comments"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "post_comments_post_id_fkey"
             columns: ["post_id"]
             isOneToOne: false
@@ -269,10 +319,10 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "post_comments_ai_run_id_fkey"
-            columns: ["ai_run_id"]
+            foreignKeyName: "post_comments_system_actor_id_fkey"
+            columns: ["system_actor_id"]
             isOneToOne: false
-            referencedRelation: "post_ai_runs"
+            referencedRelation: "system_actors"
             referencedColumns: ["id"]
           },
         ]
@@ -417,6 +467,7 @@ export type Database = {
       }
       posts: {
         Row: {
+          author: Json
           author_id: string
           body: string | null
           created_at: string
@@ -430,6 +481,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          author?: Json
           author_id: string
           body?: string | null
           created_at?: string
@@ -443,6 +495,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          author?: Json
           author_id?: string
           body?: string | null
           created_at?: string
@@ -554,33 +607,33 @@ export type Database = {
         }
         Relationships: []
       }
-      users: {
+      system_actors: {
         Row: {
-          age: number | null
+          avatar_path: string | null
+          code: string
           created_at: string
-          email: string | null
-          last_name: string | null
-          name: string | null
-          password: string | null
-          user_id: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
         }
         Insert: {
-          age?: number | null
+          avatar_path?: string | null
+          code: string
           created_at?: string
-          email?: string | null
-          last_name?: string | null
-          name?: string | null
-          password?: string | null
-          user_id?: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
         }
         Update: {
-          age?: number | null
+          avatar_path?: string | null
+          code?: string
           created_at?: string
-          email?: string | null
-          last_name?: string | null
-          name?: string | null
-          password?: string | null
-          user_id?: string
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -589,7 +642,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      build_post_author_snapshot: {
+        Args: { profile_id: string }
+        Returns: Json
+      }
+      finalize_post_ai_run: {
+        Args: { p_metadata?: Json; p_reply: string; p_run_id: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
@@ -608,12 +668,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -637,11 +697,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -662,11 +722,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -687,11 +747,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -704,11 +764,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -722,3 +782,4 @@ export const Constants = {
     Enums: {},
   },
 } as const
+
