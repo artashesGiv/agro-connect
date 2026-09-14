@@ -12,6 +12,7 @@ const commentSelect = `
   created_at,
   updated_at,
   author_id,
+  parent_answer_id,
   profiles!answers_author_id_fkey (
     name,
     avatar_path,
@@ -29,6 +30,7 @@ export type CommentRow = {
   created_at: string;
   updated_at: string;
   author_id: string;
+  parent_answer_id: string | null;
   profiles: { name: string | null; avatar_path: string | null; reputation: number | null } | null;
   answer_votes: { user_id: string; value: number }[];
 };
@@ -71,10 +73,14 @@ export async function addComment(
   postId: string,
   authorId: string,
   body: string,
+  parentAnswerId?: string | null,
 ): Promise<void> {
-  const { error } = await supabase
-    .from('answers')
-    .insert({ post_id: postId, author_id: authorId, body: body.trim() });
+  const { error } = await supabase.from('answers').insert({
+    post_id: postId,
+    author_id: authorId,
+    body: body.trim(),
+    parent_answer_id: parentAnswerId ?? null,
+  });
   if (error) throw error;
 }
 

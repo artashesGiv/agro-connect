@@ -15,17 +15,26 @@ type Props = {
   onVote: (value: -1 | 1) => void;
   onEdit: () => void;
   onDelete: () => void;
+  /** Не передаётся для ИИ-комментариев — у них нет своей ветки ответов. */
+  onReply?: () => void;
   /** Не передаётся для ИИ-комментариев — у ИИ нет профиля. */
   onAuthorPress?: () => void;
 };
 
-export function CommentItem({ comment, onVote, onEdit, onDelete, onAuthorPress }: Props) {
+export function CommentItem({
+  comment,
+  onVote,
+  onEdit,
+  onDelete,
+  onReply,
+  onAuthorPress,
+}: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, Boolean(comment.parentId) && styles.replyRow]}>
       <Pressable onPress={onAuthorPress} disabled={!onAuthorPress}>
         {comment.author.avatarUrl ? (
           <Avatar.Image size={28} source={{ uri: comment.author.avatarUrl }} />
@@ -109,6 +118,10 @@ export function CommentItem({ comment, onVote, onEdit, onDelete, onAuthorPress }
           ) : null}
         </View>
 
+        {comment.replyToName ? (
+          <Text style={styles.replyToLabel}>Ответ {comment.replyToName}</Text>
+        ) : null}
+
         <ExpandableText style={styles.body}>{comment.body}</ExpandableText>
 
         {comment.isAi ? null : (
@@ -140,6 +153,17 @@ export function CommentItem({ comment, onVote, onEdit, onDelete, onAuthorPress }
                 color={comment.myVote === -1 ? theme.colors.error : theme.colors.onSurfaceVariant}
               />
             </Pressable>
+            {onReply ? (
+              <Pressable
+                onPress={onReply}
+                hitSlop={8}
+                style={styles.replyButton}
+                accessibilityRole="button"
+                accessibilityLabel="Ответить"
+              >
+                <Text style={styles.replyButtonText}>Ответить</Text>
+              </Pressable>
+            ) : null}
           </View>
         )}
       </View>
@@ -154,6 +178,10 @@ const makeStyles = (theme: MD3Theme) =>
       gap: 10,
       paddingHorizontal: 16,
       paddingVertical: 12,
+    },
+    replyRow: {
+      marginLeft: 20,
+      marginTop: -12,
     },
     avatar: {
       backgroundColor: theme.colors.surfaceVariant,
@@ -198,6 +226,12 @@ const makeStyles = (theme: MD3Theme) =>
     menuItemDanger: {
       color: theme.colors.error,
     },
+    replyToLabel: {
+      color: theme.colors.primary,
+      fontSize: 12,
+      fontWeight: '600',
+      marginTop: -6,
+    },
     body: {
       color: theme.colors.onSurface,
       fontSize: 14,
@@ -215,5 +249,13 @@ const makeStyles = (theme: MD3Theme) =>
       fontWeight: '700',
       minWidth: 16,
       textAlign: 'center',
+    },
+    replyButton: {
+      marginLeft: 4,
+    },
+    replyButtonText: {
+      color: theme.colors.onSurfaceVariant,
+      fontSize: 13,
+      fontWeight: '700',
     },
   });

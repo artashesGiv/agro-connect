@@ -6,9 +6,12 @@ import { Icon } from '@/components/Icon';
 import { useAppTheme } from '@/theme';
 
 export type ComposerEditing = { id: string; initialText: string } | null;
+export type ComposerReplyTo = { id: string; authorName: string } | null;
 
 type Props = {
   editing: ComposerEditing;
+  /** Не null исключает `editing` — экран держит их взаимоисключающими. */
+  replyTo: ComposerReplyTo;
   submitting: boolean;
   /** Плейсхолдер поля («Комментарий» / «Ответить»). */
   placeholder: string;
@@ -19,20 +22,24 @@ type Props = {
   /** Возвращает `true`, если отправка прошла успешно (тогда поле очищается). */
   onSubmit: (text: string) => Promise<boolean>;
   onCancelEdit: () => void;
+  onCancelReply: () => void;
 };
 
 /**
- * Прибитое к низу PostDetail поле ввода. Одно на два режима: новый комментарий /
- * ответ и правка своего (текст подставляется, кнопка → «Сохранить», сверху баннер).
+ * Прибитое к низу PostDetail поле ввода. Три режима: новый комментарий,
+ * ответ на конкретный комментарий (баннер «Ответ для …») и правка своего
+ * (текст подставляется, кнопка → «Сохранить», баннер «Редактирование…»).
  */
 export function CommentComposer({
   editing,
+  replyTo,
   submitting,
   placeholder,
   submitLabel,
   editingLabel,
   onSubmit,
   onCancelEdit,
+  onCancelReply,
 }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
@@ -59,6 +66,20 @@ export function CommentComposer({
           <Text style={styles.bannerText}>{editingLabel}</Text>
           <Pressable
             onPress={onCancelEdit}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Отмена"
+          >
+            <Icon name="close" size={16} color={theme.colors.onSurfaceVariant} />
+          </Pressable>
+        </View>
+      ) : replyTo ? (
+        <View style={styles.banner}>
+          <Text style={styles.bannerText} numberOfLines={1}>
+            Ответ для {replyTo.authorName}
+          </Text>
+          <Pressable
+            onPress={onCancelReply}
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel="Отмена"

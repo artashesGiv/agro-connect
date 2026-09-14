@@ -25,7 +25,11 @@ import {
 import { dictionaries, storage, toUserMessage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
 
-import { CommentComposer, type ComposerEditing } from '../components/CommentComposer';
+import {
+  CommentComposer,
+  type ComposerEditing,
+  type ComposerReplyTo,
+} from '../components/CommentComposer';
 import { CommentItem } from '../components/CommentItem';
 import { useComments } from '../hooks/useComments';
 
@@ -83,6 +87,7 @@ export default function PostDetailScreen({
   const [error, setError] = useState<string | null>(null);
 
   const [editing, setEditing] = useState<ComposerEditing>(null);
+  const [replyTo, setReplyTo] = useState<ComposerReplyTo>(null);
   const [submitting, setSubmitting] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -168,6 +173,9 @@ export default function PostDetailScreen({
         if (editing) {
           await edit(editing.id, text);
           setEditing(null);
+        } else if (replyTo) {
+          await add(text, replyTo.id);
+          setReplyTo(null);
         } else {
           await add(text);
         }
@@ -179,7 +187,7 @@ export default function PostDetailScreen({
         setSubmitting(false);
       }
     },
-    [editing, edit, add],
+    [editing, replyTo, edit, add],
   );
 
   const openFieldOnMap = useCallback(
@@ -221,13 +229,14 @@ export default function PostDetailScreen({
     try {
       await remove(pendingDeleteId);
       if (editing?.id === pendingDeleteId) setEditing(null);
+      if (replyTo?.id === pendingDeleteId) setReplyTo(null);
       setPendingDeleteId(null);
     } catch (cause) {
       setDeleteError(cause instanceof Error ? cause.message : toUserMessage(cause));
     } finally {
       setDeleting(false);
     }
-  }, [pendingDeleteId, remove, editing]);
+  }, [pendingDeleteId, remove, editing, replyTo]);
 
   const terms = post?.postTypeCode === 'question' ? TERMS.question : TERMS.post;
   const fieldId = post?.fieldId ?? null;
@@ -280,11 +289,22 @@ export default function PostDetailScreen({
                   key={comment.id}
                   comment={comment}
                   onVote={(value) => handleVote(comment.id, value)}
-                  onEdit={() => setEditing({ id: comment.id, initialText: comment.body })}
+                  onEdit={() => {
+                    setReplyTo(null);
+                    setEditing({ id: comment.id, initialText: comment.body });
+                  }}
                   onDelete={() => {
                     setDeleteError(null);
                     setPendingDeleteId(comment.id);
                   }}
+                  onReply={
+                    comment.isAi
+                      ? undefined
+                      : () => {
+                          setEditing(null);
+                          setReplyTo({ id: comment.id, authorName: comment.author.nickname });
+                        }
+                  }
                   onAuthorPress={authorId ? () => openAuthor(authorId) : undefined}
                 />
               );
@@ -296,12 +316,14 @@ export default function PostDetailScreen({
         {post && !error ? (
           <CommentComposer
             editing={editing}
+            replyTo={replyTo}
             submitting={submitting}
             placeholder={terms.placeholder}
             submitLabel={terms.submit}
             editingLabel={terms.editingLabel}
             onSubmit={handleSubmitComment}
             onCancelEdit={() => setEditing(null)}
+            onCancelReply={() => setReplyTo(null)}
           />
         ) : null}
       </KeyboardAvoidingView>
