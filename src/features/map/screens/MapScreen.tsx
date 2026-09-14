@@ -1,6 +1,6 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Keyboard, StyleSheet, Text, View } from 'react-native';
 import {
   Button,
   IconButton,
@@ -365,6 +365,17 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
     mapRef.current?.setFieldTaps(true);
   }, []);
 
+  /**
+   * Закрыть под-диалог поля (культуры/статус/название) и вернуться к
+   * карточке этого же поля — скрыв клавиатуру, если она была открыта
+   * (текстовые поля есть только у формы «Название и регион», но дёшево
+   * дёргать всегда, чем разбирать по диалогам).
+   */
+  const returnToFieldCard = useCallback((fieldId: string) => {
+    Keyboard.dismiss();
+    setCardFieldId(fieldId);
+  }, []);
+
   const handleSave = useCallback(
     async (values: FieldFormValues) => {
       if (!pending) return;
@@ -383,6 +394,7 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
           // контур, который мы даже не показывали в этой форме.
           await updateField(pending.id, { name: values.name, region });
           setPending(null);
+          returnToFieldCard(pending.id);
           setSnack('Поле обновлено');
         } else {
           const geometry = pending.geometry;
@@ -409,7 +421,7 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
         setSaving(false);
       }
     },
-    [pending, reload, stopDrawing, user],
+    [pending, reload, returnToFieldCard, stopDrawing, user],
   );
 
   // Раньше `error` из `useFields` не использовался нигде: неудачная загрузка
@@ -655,10 +667,11 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
           key={cropsField.id}
           field={cropsField}
           onClose={() => {
-            setCardFieldId(cropsField.id);
+            returnToFieldCard(cropsField.id);
             setCropsField(null);
           }}
           onSaved={() => {
+            returnToFieldCard(cropsField.id);
             setCropsField(null);
             setSnack('Культуры поля сохранены');
             void reload();
@@ -671,10 +684,11 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
           key={stageField.id}
           field={stageField}
           onClose={() => {
-            setCardFieldId(stageField.id);
+            returnToFieldCard(stageField.id);
             setStageField(null);
           }}
           onSaved={() => {
+            returnToFieldCard(stageField.id);
             setStageField(null);
             setSnack('Статус поля сохранён');
             void reload();
@@ -690,6 +704,7 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
         saving={saving}
         error={saveError}
         onCancel={() => {
+          if (pending?.kind === 'info') returnToFieldCard(pending.id);
           setPending(null);
           setSaveError(null);
         }}

@@ -144,8 +144,10 @@ export function PostCard({
               color={theme.colors.onSurfaceVariant}
             />
           )}
-          <Text style={styles.nickname}>{author.nickname}</Text>
-          <ReputationBadge value={author.reputation} />
+          <View style={styles.nameColumn}>
+            <ReputationBadge value={author.reputation} nickname={author.nickname} isMine={hasMenu} />
+            <Text style={styles.nickname}>{author.nickname}</Text>
+          </View>
         </Pressable>
 
         {hasMenu ? (
@@ -272,6 +274,9 @@ const makeStyles = (theme: MD3Theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 10,
+    },
+    nameColumn: {
+      flex: 1,
     },
     date: {
       color: theme.colors.onSurfaceVariant,

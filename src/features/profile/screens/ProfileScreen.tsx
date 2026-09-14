@@ -241,6 +241,7 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
             reputation: profile?.reputation,
           }}
           placeholders={OWN_PROFILE_PLACEHOLDERS}
+          isMine
         />
         <Divider />
         <ProfileSectionTabs value={section} onChange={setSection} />

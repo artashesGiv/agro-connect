@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Avatar, Menu, Text, type MD3Theme } from 'react-native-paper';
 
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ExpandableText } from '@/components/ExpandableText';
 import { Icon } from '@/components/Icon';
 import { ReputationBadge } from '@/components/ReputationBadge';
@@ -32,6 +33,7 @@ export function CommentItem({
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [reportDialogVisible, setReportDialogVisible] = useState(false);
 
   return (
     <View style={[styles.row, Boolean(comment.parentId) && styles.replyRow]}>
@@ -50,77 +52,95 @@ export function CommentItem({
 
       <View style={styles.main}>
         <View style={styles.headerLine}>
-          <View style={styles.nicknameGroup}>
-            {comment.isAi ? (
-              <Icon name="robot-outline" size={14} color={theme.colors.primary} />
-            ) : null}
-            <Pressable onPress={onAuthorPress} disabled={!onAuthorPress}>
-              <Text
-                style={[styles.nickname, comment.isAi && { color: theme.colors.primary }]}
-                numberOfLines={1}
-              >
-                {comment.author.nickname}
-              </Text>
-            </Pressable>
+          <View style={styles.nicknameColumn}>
             {comment.author.reputation !== undefined ? (
-              <ReputationBadge value={comment.author.reputation} size={12} />
+              <ReputationBadge
+                value={comment.author.reputation}
+                nickname={comment.author.nickname}
+                isMine={comment.isMine}
+              />
             ) : null}
-          </View>
-          <Text style={styles.when}>
-            {formatDateTime(comment.createdAt)}
-            {comment.editedAt ? ' · изм.' : ''}
-          </Text>
-
-          {comment.isMine ? (
-            <Menu
-              visible={menuOpen}
-              onDismiss={() => setMenuOpen(false)}
-              contentStyle={styles.menuContent}
-              anchor={
-                <Pressable
-                  onPress={() => setMenuOpen(true)}
-                  hitSlop={6}
-                  style={styles.menuAnchor}
-                  accessibilityRole="button"
-                  accessibilityLabel="Действия с комментарием"
+            <View style={styles.nicknameGroup}>
+              {comment.isAi ? (
+                <Icon name="robot-outline" size={14} color={theme.colors.primary} />
+              ) : null}
+              <Pressable onPress={onAuthorPress} disabled={!onAuthorPress}>
+                <Text
+                  style={[styles.nickname, comment.isAi && { color: theme.colors.primary }]}
+                  numberOfLines={1}
                 >
-                  <Icon
-                    name="dots-horizontal"
-                    size={18}
-                    color={theme.colors.onSurfaceVariant}
-                  />
-                </Pressable>
-              }
-            >
-              <Menu.Item
-                leadingIcon={() => (
-                  <Icon name="pencil-outline" size={20} color={theme.colors.onSurface} />
-                )}
-                title="Редактировать"
-                titleStyle={styles.menuItemText}
-                onPress={() => {
-                  setMenuOpen(false);
-                  onEdit();
-                }}
-              />
-              <Menu.Item
-                leadingIcon={() => (
-                  <Icon name="trash-can-outline" size={20} color={theme.colors.error} />
-                )}
-                title="Удалить"
-                titleStyle={styles.menuItemDanger}
-                onPress={() => {
-                  setMenuOpen(false);
-                  onDelete();
-                }}
-              />
-            </Menu>
-          ) : null}
-        </View>
+                  {comment.author.nickname}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
 
-        {comment.replyToName ? (
-          <Text style={styles.replyToLabel}>Ответ {comment.replyToName}</Text>
-        ) : null}
+          <View style={styles.metaRight}>
+            <Text style={styles.when}>{formatDateTime(comment.createdAt)}</Text>
+
+            {comment.isAi ? null : (
+              <Menu
+                visible={menuOpen}
+                onDismiss={() => setMenuOpen(false)}
+                contentStyle={styles.menuContent}
+                anchor={
+                  <Pressable
+                    onPress={() => setMenuOpen(true)}
+                    hitSlop={6}
+                    style={styles.menuAnchor}
+                    accessibilityRole="button"
+                    accessibilityLabel="Действия с комментарием"
+                  >
+                    <Icon
+                      name="dots-horizontal"
+                      size={18}
+                      color={theme.colors.onSurfaceVariant}
+                    />
+                  </Pressable>
+                }
+              >
+                {comment.isMine ? (
+                  <>
+                    <Menu.Item
+                      leadingIcon={() => (
+                        <Icon name="pencil-outline" size={20} color={theme.colors.onSurface} />
+                      )}
+                      title="Редактировать"
+                      titleStyle={styles.menuItemText}
+                      onPress={() => {
+                        setMenuOpen(false);
+                        onEdit();
+                      }}
+                    />
+                    <Menu.Item
+                      leadingIcon={() => (
+                        <Icon name="trash-can-outline" size={20} color={theme.colors.error} />
+                      )}
+                      title="Удалить"
+                      titleStyle={styles.menuItemDanger}
+                      onPress={() => {
+                        setMenuOpen(false);
+                        onDelete();
+                      }}
+                    />
+                  </>
+                ) : (
+                  <Menu.Item
+                    leadingIcon={() => (
+                      <Icon name="flag-outline" size={20} color={theme.colors.error} />
+                    )}
+                    title="Пожаловаться"
+                    titleStyle={styles.menuItemDanger}
+                    onPress={() => {
+                      setMenuOpen(false);
+                      setReportDialogVisible(true);
+                    }}
+                  />
+                )}
+              </Menu>
+            )}
+          </View>
+        </View>
 
         <ExpandableText style={styles.body}>{comment.body}</ExpandableText>
 
@@ -164,9 +184,22 @@ export function CommentItem({
                 <Text style={styles.replyButtonText}>Ответить</Text>
               </Pressable>
             ) : null}
+            {comment.replyToName ? (
+              <Text style={styles.replyToLabel}>Ответ {comment.replyToName}</Text>
+            ) : null}
           </View>
         )}
       </View>
+
+      <ConfirmDialog
+        visible={reportDialogVisible}
+        title="Отправить жалобу?"
+        message="Уверены, что хотите отправить жалобу на этот комментарий?"
+        confirmLabel="Отправить"
+        destructive
+        onConfirm={() => setReportDialogVisible(false)}
+        onCancel={() => setReportDialogVisible(false)}
+      />
     </View>
   );
 }
@@ -193,7 +226,11 @@ const makeStyles = (theme: MD3Theme) =>
     headerLine: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
       gap: 8,
+    },
+    nicknameColumn: {
+      flexShrink: 1,
     },
     nicknameGroup: {
       flexDirection: 'row',
@@ -207,10 +244,14 @@ const makeStyles = (theme: MD3Theme) =>
       fontWeight: '700',
       flexShrink: 1,
     },
+    metaRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+    },
     when: {
       color: theme.colors.onSurfaceVariant,
       fontSize: 12,
-      flex: 1,
     },
     menuAnchor: {
       padding: 2,
@@ -230,7 +271,7 @@ const makeStyles = (theme: MD3Theme) =>
       color: theme.colors.primary,
       fontSize: 12,
       fontWeight: '600',
-      marginTop: -6,
+      marginLeft: 4,
     },
     body: {
       color: theme.colors.onSurface,

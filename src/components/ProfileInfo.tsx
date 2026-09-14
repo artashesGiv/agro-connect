@@ -27,13 +27,15 @@ export type ProfileInfoPlaceholders = {
 type ProfileInfoProps = {
   profile: ProfileInfoData;
   placeholders?: ProfileInfoPlaceholders;
+  /** Свой профиль — окно ранга подпишет «Ваш ранг» вместо «Ранг Имя». */
+  isMine?: boolean;
 };
 
 /**
  * Блок «аватар + имя + данные» профиля. Чистый presentational-компонент:
  * всё приходит через пропы, без обращения к сессии.
  */
-export function ProfileInfo({ profile, placeholders }: ProfileInfoProps) {
+export function ProfileInfo({ profile, placeholders, isMine }: ProfileInfoProps) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
@@ -70,12 +72,16 @@ export function ProfileInfo({ profile, placeholders }: ProfileInfoProps) {
           const nameNode = line(profile.name, placeholders?.name, true);
           if (!nameNode) return null;
           return (
-            <View style={styles.nameRow}>
-              {nameNode}
+            <>
               {profile.reputation !== undefined ? (
-                <ReputationBadge value={profile.reputation} />
+                <ReputationBadge
+                  value={profile.reputation}
+                  nickname={profile.name ?? ''}
+                  isMine={isMine}
+                />
               ) : null}
-            </View>
+              {nameNode}
+            </>
           );
         })()}
         {line(profile.specialization, placeholders?.specialization)}
@@ -104,11 +110,6 @@ const makeStyles = (theme: MD3Theme) =>
       color: theme.colors.onSurface,
       fontSize: 18,
       fontWeight: '700',
-    },
-    nameRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
     },
     detail: {
       color: theme.colors.onSurfaceVariant,
