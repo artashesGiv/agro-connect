@@ -45,11 +45,20 @@ export function CommentComposer({
 
   const trimmed = text.trim();
   const canSend = trimmed.length > 0 && !submitting;
+  const hasAiMention = /(^|\s)@ai\b/i.test(text);
 
   const handleSend = async () => {
     const ok = await onSubmit(trimmed);
     // В режиме правки успех уводит editing → null, и текст очистит эффект.
     if (ok && !editing) setText('');
+  };
+
+  const handleInsertAiMention = () => {
+    if (hasAiMention) return;
+    setText((prev) => {
+      const base = prev.replace(/\s+$/, '');
+      return base.length > 0 ? `${base} @ai ` : '@ai ';
+    });
   };
 
   return (
@@ -75,6 +84,16 @@ export function CommentComposer({
           onChangeText={setText}
           placeholder={placeholder}
           style={styles.input}
+          right={
+            <TextInput.Icon
+              icon="robot-outline"
+              size={18}
+              color={hasAiMention ? theme.colors.primary : theme.colors.onSurfaceVariant}
+              onPress={handleInsertAiMention}
+              accessibilityLabel="Упомянуть ИИ-помощника"
+              forceTextInputFocus={false}
+            />
+          }
         />
         <Button
           mode="contained"
