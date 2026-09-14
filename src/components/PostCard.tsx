@@ -216,13 +216,6 @@ export function PostCard({
         <PostPhotos images={images} unavailable={photosUnavailable} />
       ) : null}
 
-      {fieldName ? (
-        <View style={styles.fieldRow}>
-          <Icon name="map-marker-outline" size={16} color={theme.colors.onSurfaceVariant} />
-          <Text style={styles.fieldText}>{fieldName}</Text>
-        </View>
-      ) : null}
-
       <View style={styles.actions}>
         <View style={styles.actionsLeft}>
           {reactions && onToggleReaction ? (
@@ -236,7 +229,18 @@ export function PostCard({
             count={commentCount}
             onPress={onComment}
           />
-          {onMap ? <PostAction icon="map-outline" label="На карте" onPress={onMap} /> : null}
+          {onMap && fieldName ? (
+            <Pressable
+              onPress={onMap}
+              hitSlop={6}
+              style={({ pressed }) => [actionStyles.action, pressed && actionStyles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`Поле ${fieldName} на карте`}
+            >
+              <Icon name="map-outline" size={18} color={theme.colors.onSurfaceVariant} />
+              <Text style={styles.fieldText}>{fieldName}</Text>
+            </Pressable>
+          ) : null}
         </View>
         {createdAt ? <Text style={styles.date}>{formatDateTime(createdAt)}</Text> : null}
       </View>
@@ -304,14 +308,6 @@ const makeStyles = (theme: MD3Theme) =>
       color: theme.colors.onSurfaceVariant,
       fontSize: 14,
       lineHeight: 20,
-    },
-    fieldRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 16,
-      paddingTop: 8,
-      marginBottom: -10,
     },
     fieldText: {
       color: theme.colors.onSurfaceVariant,
