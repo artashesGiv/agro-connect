@@ -10,9 +10,11 @@ import {
 } from 'react-native-paper';
 
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { PendingPostCard } from '@/components/PendingPostCard';
 import { PostCard } from '@/components/PostCard';
 import { ProfileInfo } from '@/components/ProfileInfo';
 import { useFields } from '@/hooks/useFields';
+import { usePendingPosts } from '@/hooks/usePendingPosts';
 import { useReactions } from '@/hooks/useReactions';
 import type { ProfileScreenProps } from '@/navigation/types';
 import { useAuth } from '@/services/auth';
@@ -53,6 +55,12 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
   const { user, profile } = useAuth();
   const [section, setSection] = useState<ProfileSection>('posts');
   const { posts, setPosts, loading, error, reload, syncItem } = useUserPosts(user?.id);
+  const {
+    items: pendingPosts,
+    processing: pendingSending,
+    retryAll: retryPendingPosts,
+    remove: removePendingPost,
+  } = usePendingPosts();
   const { setReaction } = useReactions();
   const {
     fields: allFields,
@@ -72,7 +80,8 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [pendingDeleteField, setPendingDeleteField] = useState<Field | null>(null);
   const [deletingField, setDeletingField] = useState(false);
-  /** Транзиентные сообщения: ошибка реакции, «Поле удалено» и т.п. */
+  const [pendingDeleteQueueId, setPendingDeleteQueueId] = useState<string | null>(null);
+  /** Транзиентные сообщения: ошибка реакции, «Поле удалено», тост из мастера создания и т.п. */
   const [notice, setNotice] = useState<string | null>(null);
   /** id поста, открытого в PostDetail/EditPost — перечитываем его при возврате. */
   const openedRef = useRef<string | null>(null);
@@ -89,9 +98,21 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
         void reload();
         navigation.setParams({ refresh: undefined });
       }
+      // Разовый тост от мастера создания (например, «нет подключения» при офлайне).
+      if (route.params?.notice) {
+        setNotice(route.params.notice);
+        navigation.setParams({ notice: undefined });
+      }
       // Поля — маленький список без пагинации, освежаем всегда (правка на карте).
       void reloadFields();
-    }, [syncItem, reload, reloadFields, route.params?.refresh, navigation]),
+    }, [
+      syncItem,
+      reload,
+      reloadFields,
+      route.params?.refresh,
+      route.params?.notice,
+      navigation,
+    ]),
   );
 
   const openPost = useCallback(
@@ -178,6 +199,12 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
     }
   }, [pendingDeleteField, reloadFields]);
 
+  const confirmDeletePending = useCallback(async () => {
+    if (!pendingDeleteQueueId) return;
+    await removePendingPost(pendingDeleteQueueId);
+    setPendingDeleteQueueId(null);
+  }, [pendingDeleteQueueId, removePendingPost]);
+
   /**
    * Переход к полю на карту. Параметры чистим явно даже когда поля нет: таб
    * помнит их между переходами, и без этого «Добавить поле» унесло бы к
@@ -228,38 +255,67 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
               onOpen={openOnMap}
               onDelete={setPendingDeleteField}
             />
-          ) : error && posts.length === 0 ? (
-            <Text style={styles.stateText}>{error}</Text>
-          ) : loading && posts.length === 0 ? (
-            <ActivityIndicator style={styles.loader} />
-          ) : posts.length === 0 ? (
-            <Text style={styles.stateText}>Постов пока нет</Text>
           ) : (
-            // .map, а не FlatList — список внутри ScrollView. Заменить на FlatList,
-            // когда постов станет много / появится пагинация.
-            posts.map((post) => (
-              <PostCard
-                key={post.id}
-                author={post.author}
-                title={post.title}
-                description={post.description}
-                images={post.images}
-                createdAt={post.createdAt}
-                reactions={post.reactions}
-                onToggleReaction={(code) => handleToggleReaction(post.id, code)}
-                commentCount={post.commentCount}
-                onComment={() => openPost(post.id)}
-                onEdit={() => editPost(post.id)}
-                onDelete={() => {
-                  setDeleteError(null);
-                  setPendingDeleteId(post.id);
-                }}
-                onMap={post.fieldId ? () => openOnMap(post.fieldId, false) : undefined}
-              />
-            ))
+            <>
+              {pendingPosts.map((post) => (
+                <PendingPostCard
+                  key={post.id}
+                  post={post}
+                  author={{
+                    id: user?.id ?? '',
+                    nickname: profile?.name ?? 'вы',
+                    avatarUrl,
+                    reputation: profile?.reputation ?? 0,
+                  }}
+                  sending={pendingSending}
+                  onRetry={retryPendingPosts}
+                  onDelete={() => setPendingDeleteQueueId(post.id)}
+                />
+              ))}
+              {error && posts.length === 0 && pendingPosts.length === 0 ? (
+                <Text style={styles.stateText}>{error}</Text>
+              ) : loading && posts.length === 0 && pendingPosts.length === 0 ? (
+                <ActivityIndicator style={styles.loader} />
+              ) : posts.length === 0 && pendingPosts.length === 0 ? (
+                <Text style={styles.stateText}>Постов пока нет</Text>
+              ) : (
+                // .map, а не FlatList — список внутри ScrollView. Заменить на FlatList,
+                // когда постов станет много / появится пагинация.
+                posts.map((post) => (
+                  <PostCard
+                    key={post.id}
+                    author={post.author}
+                    title={post.title}
+                    description={post.description}
+                    images={post.images}
+                    createdAt={post.createdAt}
+                    reactions={post.reactions}
+                    onToggleReaction={(code) => handleToggleReaction(post.id, code)}
+                    commentCount={post.commentCount}
+                    onComment={() => openPost(post.id)}
+                    onEdit={() => editPost(post.id)}
+                    onDelete={() => {
+                      setDeleteError(null);
+                      setPendingDeleteId(post.id);
+                    }}
+                    onMap={post.fieldId ? () => openOnMap(post.fieldId, false) : undefined}
+                  />
+                ))
+              )}
+            </>
           )}
         </View>
       </ScrollView>
+
+      <ConfirmDialog
+        visible={pendingDeleteQueueId !== null}
+        title="Удалить черновик?"
+        message="Пост так и не будет отправлен. Это действие нельзя отменить."
+        confirmLabel="Удалить"
+        destructive
+        onConfirm={confirmDeletePending}
+        onCancel={() => setPendingDeleteQueueId(null)}
+      />
 
       <ConfirmDialog
         visible={pendingDeleteId !== null}

@@ -4,6 +4,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Text,
   useWindowDimensions,
   View,
   type NativeScrollEvent,
@@ -13,11 +14,17 @@ import type { MD3Theme } from 'react-native-paper';
 
 import { useAppTheme } from '@/theme';
 
+import { Icon } from './Icon';
 import { PhotoDots } from './PhotoDots';
 import { PhotoViewerModal } from './PhotoViewerModal';
 
 type Props = {
   images: string[];
+  /**
+   * Показать плейсхолдер вместо реальных фото: для ленты офлайн — подписанные
+   * URL на приватный бакет протухают за 10 минут, без сети их не обновить.
+   */
+  unavailable?: boolean;
 };
 
 /**
@@ -25,7 +32,7 @@ type Props = {
  * больше одного) + тап по фото открывает полноэкранный просмотр. Инкапсулирует
  * всё сам — наружу только `images`, `PostCard` от смены поведения не меняется.
  */
-export function PostPhotos({ images }: Props) {
+export function PostPhotos({ images, unavailable }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const { width } = useWindowDimensions();
@@ -33,6 +40,18 @@ export function PostPhotos({ images }: Props) {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   if (images.length === 0) return null;
+
+  if (unavailable) {
+    return (
+      <View style={[styles.wrap, styles.placeholder]}>
+        <Icon name="image-off-outline" size={28} color={theme.colors.onSurfaceVariant} />
+        <Text style={styles.placeholderText}>
+          {images.length > 1 ? `${images.length} фото` : 'Фото'} — доступны при
+          подключении к интернету
+        </Text>
+      </View>
+    );
+  }
 
   const onMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     setActiveIndex(Math.round(event.nativeEvent.contentOffset.x / width));
@@ -83,5 +102,16 @@ const makeStyles = (theme: MD3Theme) =>
     image: {
       width: '100%',
       height: '100%',
+    },
+    placeholder: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: 24,
+    },
+    placeholderText: {
+      color: theme.colors.onSurfaceVariant,
+      fontSize: 13,
+      textAlign: 'center',
     },
   });

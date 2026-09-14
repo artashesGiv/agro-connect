@@ -15,8 +15,12 @@ export type RootTabParamList = {
   Map: { focusFieldId?: string; openCard?: boolean } | undefined;
   Create: undefined;
   Questions: undefined;
-  /** `refresh` — после создания поста мастером: перечитать ленту «Мои посты». */
-  Profile: { refresh?: boolean } | undefined;
+  /**
+   * `refresh` — после создания поста мастером: перечитать ленту «Мои посты».
+   * `notice` — разовое сообщение показать в Snackbar (например, «пост
+   * сохранён и уйдёт при подключении к сети» при офлайн-создании).
+   */
+  Profile: { refresh?: boolean; notice?: string } | undefined;
 };
 
 /**

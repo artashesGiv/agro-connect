@@ -4,6 +4,7 @@ import { Button, HelperText, type MD3Theme } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 
 import { Icon } from '@/components/Icon';
+import { deletePersistedPhoto, persistPickedPhoto } from '@/services/postQueue';
 import { useAppTheme } from '@/theme';
 
 import type { PhotoItem } from '../schemas/createPostSchema';
@@ -29,17 +30,28 @@ export function PhotoPicker({ value, onChange }: Props) {
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const [error, setError] = useState<string | null>(null);
 
-  const append = (assets: ImagePicker.ImagePickerAsset[]) => {
-    const next: PhotoItem[] = assets.map((asset) => ({
-      kind: 'new',
-      uri: asset.uri,
-      mimeType: asset.mimeType ?? 'image/jpeg',
-    }));
-    onChange([...value, ...next].slice(0, SELECTION_LIMIT));
+  // Копируем в постоянное хранилище сразу при выборе — не только когда уже
+  // известно, что сети нет: кэш-каталог пикера ОС может очистить в любой
+  // момент, а сеть может пропасть и позже, между выбором фото и отправкой.
+  const append = async (assets: ImagePicker.ImagePickerAsset[]) => {
+    try {
+      const next: PhotoItem[] = await Promise.all(
+        assets.map(async (asset) => ({
+          kind: 'new' as const,
+          uri: await persistPickedPhoto(asset.uri),
+          mimeType: asset.mimeType ?? 'image/jpeg',
+        })),
+      );
+      onChange([...value, ...next].slice(0, SELECTION_LIMIT));
+    } catch {
+      setError('Не удалось сохранить фото. Попробуйте ещё раз.');
+    }
   };
 
   const remove = (key: string) => {
-    onChange(value.filter((photo) => keyOf(photo) !== key));
+    const photo = value.find((item) => keyOf(item) === key);
+    if (photo?.kind === 'new') deletePersistedPhoto(photo.uri);
+    onChange(value.filter((item) => keyOf(item) !== key));
   };
 
   const takePhoto = async () => {
@@ -53,7 +65,7 @@ export function PhotoPicker({ value, onChange }: Props) {
       mediaTypes: ['images'],
       quality: 0.7,
     });
-    if (!result.canceled) append(result.assets);
+    if (!result.canceled) await append(result.assets);
   };
 
   const pickFromLibrary = async () => {
@@ -69,7 +81,7 @@ export function PhotoPicker({ value, onChange }: Props) {
       selectionLimit: SELECTION_LIMIT,
       quality: 0.7,
     });
-    if (!result.canceled) append(result.assets);
+    if (!result.canceled) await append(result.assets);
   };
 
   const full = value.length >= SELECTION_LIMIT;
