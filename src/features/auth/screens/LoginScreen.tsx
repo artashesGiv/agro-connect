@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Keyboard, StyleSheet, Text } from 'react-native';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Button, HelperText, type MD3Theme } from 'react-native-paper';
+import { Button, HelperText, IconButton, type MD3Theme } from 'react-native-paper';
 
 import { KeyboardAwareScreen } from '@/components/KeyboardAwareScreen';
 import type { LoginScreenProps } from '@/navigation/types';
@@ -35,6 +35,15 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
   return (
     <KeyboardAwareScreen contentContainerStyle={styles.content}>
+      {navigation.canGoBack() ? (
+        <IconButton
+          icon="arrow-left"
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          accessibilityLabel="Назад"
+        />
+      ) : null}
+
       <Text style={styles.title}>Вход</Text>
       <Text style={styles.subtitle}>Войдите, чтобы продолжить.</Text>
 
@@ -94,6 +103,12 @@ const makeStyles = (theme: MD3Theme) =>
       flexGrow: 1,
       justifyContent: 'center',
       paddingHorizontal: 24,
+    },
+    backButton: {
+      position: 'absolute',
+      top: 8,
+      left: 8,
+      margin: 0,
     },
     title: {
       color: theme.colors.onBackground,
