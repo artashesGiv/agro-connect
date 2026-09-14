@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Divider, List, Text, type MD3Theme } from 'react-native-paper';
 
 import { AppHeader } from '@/components/AppHeader';
@@ -44,7 +44,17 @@ function formatWhen(iso: string): string {
 export default function NotificationsScreen({ navigation }: NotificationsScreenProps) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
-  const { notifications, loading, error } = useNotifications();
+  const { notifications, loading, error, refetch } = useNotifications();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch]);
 
   return (
     <View style={styles.root}>
@@ -57,7 +67,12 @@ export default function NotificationsScreen({ navigation }: NotificationsScreenP
       ) : notifications.length === 0 ? (
         <ScreenPlaceholder text="Уведомлений пока нет" />
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} />
+          }
+        >
           {notifications.map((item, index) => (
             <NotificationRowItem
               key={item.id}

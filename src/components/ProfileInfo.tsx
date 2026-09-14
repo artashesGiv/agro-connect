@@ -1,9 +1,10 @@
-import { useMemo, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Avatar, Text, type MD3Theme } from 'react-native-paper';
 
 import { useAppTheme } from '@/theme';
 
+import { PhotoViewerModal } from './PhotoViewerModal';
 import { ReputationBadge } from './ReputationBadge';
 
 /** Данные профиля для отображения — подмножество строки `profiles`, независимое
@@ -38,6 +39,7 @@ type ProfileInfoProps = {
 export function ProfileInfo({ profile, placeholders, isMine }: ProfileInfoProps) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
+  const [viewerVisible, setViewerVisible] = useState(false);
 
   const line = (
     value: string | undefined,
@@ -58,7 +60,13 @@ export function ProfileInfo({ profile, placeholders, isMine }: ProfileInfoProps)
   return (
     <View style={styles.row}>
       {profile.avatarUrl ? (
-        <Avatar.Image size={72} source={{ uri: profile.avatarUrl }} />
+        <Pressable
+          onPress={() => setViewerVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Открыть фото профиля"
+        >
+          <Avatar.Image size={72} source={{ uri: profile.avatarUrl }} />
+        </Pressable>
       ) : (
         <Avatar.Icon
           size={72}
@@ -87,6 +95,15 @@ export function ProfileInfo({ profile, placeholders, isMine }: ProfileInfoProps)
         {line(profile.specialization, placeholders?.specialization)}
         {line(profile.region, placeholders?.region)}
       </View>
+
+      {profile.avatarUrl ? (
+        <PhotoViewerModal
+          visible={viewerVisible}
+          images={[profile.avatarUrl]}
+          initialIndex={0}
+          onClose={() => setViewerVisible(false)}
+        />
+      ) : null}
     </View>
   );
 }
