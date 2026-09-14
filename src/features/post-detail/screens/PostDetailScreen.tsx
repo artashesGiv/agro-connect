@@ -23,7 +23,7 @@ import { PostCard } from '@/components/PostCard';
 import { useReactions } from '@/hooks/useReactions';
 import type { PostDetailScreenProps } from '@/navigation/types';
 import { useAuth } from '@/services/auth';
-import { getPost } from '@/services/posts';
+import { deletePost, getPost } from '@/services/posts';
 import {
   summarizeReactions,
   toggleReactionSummary,
@@ -120,6 +120,9 @@ export default function PostDetailScreen({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [pendingDeletePost, setPendingDeletePost] = useState(false);
+  const [deletingPost, setDeletingPost] = useState(false);
+  const [postDeleteError, setPostDeleteError] = useState<string | null>(null);
 
   const loadPost = useCallback(async () => {
     setLoadingPost(true);
@@ -239,6 +242,19 @@ export default function PostDetailScreen({
     [navigation],
   );
 
+  const handleDeletePost = useCallback(async () => {
+    setDeletingPost(true);
+    setPostDeleteError(null);
+    try {
+      await deletePost(postId);
+      navigation.goBack();
+    } catch (cause) {
+      setPostDeleteError(toUserMessage(cause));
+    } finally {
+      setDeletingPost(false);
+    }
+  }, [postId, navigation]);
+
   const openAuthor = useCallback(
     (authorId: string) => {
       if (authorId && authorId === user?.id) {
@@ -279,6 +295,7 @@ export default function PostDetailScreen({
 
   const terms = post?.postTypeCode === 'question' ? TERMS.question : TERMS.post;
   const fieldId = post?.fieldId ?? null;
+  const isOwnPost = Boolean(user && post && post.author.id === user.id);
 
   /**
    * `comments` уже сгруппирован по потокам (`useComments` → `orderByThread`):
@@ -339,6 +356,8 @@ export default function PostDetailScreen({
                 commentCount={comments.length}
                 fieldName={post.fieldName ?? undefined}
                 onMap={fieldId ? () => openFieldOnMap(fieldId) : undefined}
+                onEdit={isOwnPost ? () => navigation.navigate('EditPost', { postId }) : undefined}
+                onDelete={isOwnPost ? () => setPendingDeletePost(true) : undefined}
               />
             ) : null}
 
@@ -422,6 +441,21 @@ export default function PostDetailScreen({
         onCancel={() => {
           setPendingDeleteId(null);
           setDeleteError(null);
+        }}
+      />
+
+      <ConfirmDialog
+        visible={pendingDeletePost}
+        title="Удалить пост?"
+        message="Это действие нельзя отменить."
+        confirmLabel="Удалить"
+        destructive
+        loading={deletingPost}
+        error={postDeleteError}
+        onConfirm={handleDeletePost}
+        onCancel={() => {
+          setPendingDeletePost(false);
+          setPostDeleteError(null);
         }}
       />
 

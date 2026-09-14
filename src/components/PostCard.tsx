@@ -90,6 +90,10 @@ type PostCardProps = {
   /** Если передан `onEdit` или `onDelete` — в углу поста появляются «три точки». */
   onEdit?: () => void;
   onDelete?: () => void;
+  /** false скрывает «⋮» целиком — например, в превью ещё не опубликованного
+   *  поста: там нечего ни редактировать этим меню (правит сам мастер), ни
+   *  жаловаться (это черновик, а не чужой пост). По умолчанию — показывать. */
+  showMenu?: boolean;
 };
 
 /**
@@ -120,6 +124,7 @@ export function PostCard({
   onMap,
   onEdit,
   onDelete,
+  showMenu = true,
 }: PostCardProps) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
@@ -153,6 +158,7 @@ export function PostCard({
           </View>
         </Pressable>
 
+        {showMenu ? (
         <Menu
           visible={menuOpen}
           onDismiss={() => setMenuOpen(false)}
@@ -220,6 +226,7 @@ export function PostCard({
             />
           )}
         </Menu>
+        ) : null}
       </View>
 
       <View style={styles.body}>
