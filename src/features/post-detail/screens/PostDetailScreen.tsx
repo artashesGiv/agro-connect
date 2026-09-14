@@ -1,5 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Platform, KeyboardAvoidingView, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Platform,
+  KeyboardAvoidingView,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -112,6 +119,7 @@ export default function PostDetailScreen({
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadPost = useCallback(async () => {
     setLoadingPost(true);
@@ -162,6 +170,15 @@ export default function PostDetailScreen({
       void reloadComments();
     }, [loadPost, reloadComments]),
   );
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([loadPost(), reloadComments()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadPost, reloadComments]);
 
   const handleToggleReaction = useCallback(
     async (code: string) => {
@@ -305,6 +322,9 @@ export default function PostDetailScreen({
           <ScrollView
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} />
+            }
           >
             {post ? (
               <PostCard

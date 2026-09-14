@@ -1,11 +1,14 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { StyleSheet, View } from 'react-native';
 
 import { Icon, type IconName } from '../components/Icon';
+import { useNotifications } from '../features/notifications/NotificationsProvider';
 import CreateScreen from '../features/create/screens/CreateScreen';
 import HomeScreen from '../features/home/screens/HomeScreen';
 import MapScreen from '../features/map/screens/MapScreen';
 import ProfileScreen from '../features/profile/screens/ProfileScreen';
 import QuestionsScreen from '../features/questions/screens/QuestionsScreen';
+import { useAppTheme } from '../theme';
 import { CreateTabButton } from './CreateTabButton';
 import type { RootTabParamList } from './types';
 
@@ -21,6 +24,9 @@ const TAB_ICONS: Partial<
 };
 
 export function MainTabs() {
+  const theme = useAppTheme();
+  const { unreadCount } = useNotifications();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -28,11 +34,21 @@ export function MainTabs() {
           const set = TAB_ICONS[route.name];
           if (!set) return null;
           return (
-            <Icon
-              name={focused ? set.active : set.inactive}
-              color={color}
-              size={size}
-            />
+            <View>
+              <Icon
+                name={focused ? set.active : set.inactive}
+                color={color}
+                size={size}
+              />
+              {route.name === 'Profile' && unreadCount > 0 ? (
+                <View
+                  style={[
+                    styles.badgeDot,
+                    { backgroundColor: theme.colors.error, borderColor: theme.colors.surface },
+                  ]}
+                />
+              ) : null}
+            </View>
           );
         },
       })}
@@ -78,3 +94,15 @@ export function MainTabs() {
     </Tab.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  badgeDot: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+});

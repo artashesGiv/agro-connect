@@ -1,6 +1,6 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
   Divider,
@@ -83,6 +83,7 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
   const [pendingDeleteQueueId, setPendingDeleteQueueId] = useState<string | null>(null);
   /** Транзиентные сообщения: ошибка реакции, «Поле удалено», тост из мастера создания и т.п. */
   const [notice, setNotice] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   /** id поста, открытого в PostDetail/EditPost — перечитываем его при возврате. */
   const openedRef = useRef<string | null>(null);
 
@@ -114,6 +115,15 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
       navigation,
     ]),
   );
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([reload(), reloadFields()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [reload, reloadFields]);
 
   const openPost = useCallback(
     (postId: string) => {
@@ -231,6 +241,9 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => void handleRefresh()} />
+        }
       >
         <ProfileInfo
           profile={{
