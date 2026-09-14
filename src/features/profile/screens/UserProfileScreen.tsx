@@ -226,6 +226,7 @@ export default function UserProfileScreen({ route, navigation }: UserProfileScre
                   onToggleReaction={(code) => handleToggleReaction(post.id, code)}
                   commentCount={post.commentCount}
                   onComment={() => openPost(post.id)}
+                  fieldName={post.fieldName}
                   onMap={post.fieldId ? () => openField(post.fieldId, false) : undefined}
                 />
               ))

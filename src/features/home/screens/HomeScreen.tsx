@@ -15,10 +15,12 @@ import { CropFilterSelect } from '@/components/CropFilterSelect';
 import { ExpandingSearchField } from '@/components/ExpandingSearchField';
 import { PendingPostCard } from '@/components/PendingPostCard';
 import { PostCard } from '@/components/PostCard';
+import { StageFilterSelect } from '@/components/StageFilterSelect';
 import { useCrops } from '@/hooks/useCrops';
 import { useFeed, type FeedItem } from '@/hooks/useFeed';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { usePendingPosts } from '@/hooks/usePendingPosts';
+import { useStages } from '@/hooks/useStages';
 import { useReactions } from '@/hooks/useReactions';
 import type { HomeScreenProps } from '@/navigation/types';
 import { useAuth } from '@/services/auth';
@@ -43,6 +45,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const isOnline = useNetworkStatus();
   const { setReaction } = useReactions();
   const { crops } = useCrops();
+  const { stages } = useStages();
   const {
     items: pendingItems,
     processing: pendingSending,
@@ -54,6 +57,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [cropIds, setCropIds] = useState<number[]>([]);
+  const [stageIds, setStageIds] = useState<number[]>([]);
 
   useEffect(() => {
     const timer = setTimeout(() => setSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS);
@@ -81,10 +85,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     syncItem,
   } = useFeed({
     cropIds: cropIds.length ? cropIds : undefined,
+    stageIds: stageIds.length ? stageIds : undefined,
     search: search || undefined,
     postTypeCode: 'field_update',
   });
-  const filtered = Boolean(search) || cropIds.length > 0;
+  const filtered = Boolean(search) || cropIds.length > 0 || stageIds.length > 0;
 
   // Показываем офлайн-черновики только на «чистой» ленте: у отложенного поста
   // культура ещё не известна (её вычисляет сервер по полю), под фильтр по
@@ -224,6 +229,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
                 }
               : undefined
           }
+          fieldName={item.fieldName}
           onMap={fieldId ? () => openFieldOnMap(fieldId) : undefined}
         />
       );
@@ -250,7 +256,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           },
         ]}
       />
-      <CropFilterSelect crops={crops} value={cropIds} onChange={setCropIds} />
+      <View style={styles.filtersRow}>
+        <CropFilterSelect crops={crops} value={cropIds} onChange={setCropIds} />
+        <StageFilterSelect stages={stages} value={stageIds} onChange={setStageIds} />
+      </View>
 
       {loading && items.length === 0 && pendingForFeed.length === 0 ? (
         <ActivityIndicator style={styles.loader} />
@@ -270,7 +279,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           onEndReached={() => void loadMore()}
           onEndReachedThreshold={0.5}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />
+            <RefreshControl
+              refreshing={refreshing || (loading && items.length > 0)}
+              onRefresh={() => void refresh()}
+            />
           }
           ListHeaderComponent={
             pendingForFeed.length > 0 ? (
@@ -351,6 +363,10 @@ const makeStyles = (theme: MD3Theme) =>
     root: {
       flex: 1,
       backgroundColor: theme.colors.background,
+    },
+    filtersRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
     },
     content: {
       flexGrow: 1,

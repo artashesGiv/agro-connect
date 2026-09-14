@@ -20,6 +20,9 @@ const feedSelect = (innerPostType: boolean) => `
   created_at,
   field_id,
   stage_id,
+  fields (
+    name
+  ),
   profiles!posts_author_id_fkey (
     id,
     name,
@@ -70,6 +73,7 @@ export type FeedPost = {
   created_at: string;
   field_id: string | null;
   stage_id: number | null;
+  fields: { name: string } | null;
   profiles: {
     id: string;
     name: string | null;
@@ -99,6 +103,8 @@ export type FeedPost = {
 export type FeedFilter = {
   /** crops.id — целые числа, а не uuid; несколько значений — OR через `.in()`. */
   cropIds?: number[];
+  /** post_stages.id — тот же тег, что стоит на самом посте (`posts.stage_id`). */
+  stageIds?: number[];
   fieldId?: string;
   /** Свободный текст: ищем в `title` и `body` через `ilike`. */
   search?: string;
@@ -124,6 +130,7 @@ export async function getFeed(filter: FeedFilter = {}): Promise<FeedPost[]> {
     .limit(filter.limit ?? 20);
 
   if (filter.cropIds?.length) query = query.in('crop_id', filter.cropIds);
+  if (filter.stageIds?.length) query = query.in('stage_id', filter.stageIds);
   if (filter.fieldId) query = query.eq('field_id', filter.fieldId);
   if (filter.authorId) query = query.eq('author_id', filter.authorId);
   if (filter.search) {

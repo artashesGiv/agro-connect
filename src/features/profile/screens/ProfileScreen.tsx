@@ -298,6 +298,7 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
                       setDeleteError(null);
                       setPendingDeleteId(post.id);
                     }}
+                    fieldName={post.fieldName}
                     onMap={post.fieldId ? () => openOnMap(post.fieldId, false) : undefined}
                   />
                 ))

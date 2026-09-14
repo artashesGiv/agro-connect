@@ -82,6 +82,8 @@ type PostCardProps = {
   onToggleReaction?: (code: string) => void;
   commentCount?: number;
   onComment?: () => void;
+  /** Название привязанного поля — строка с гео-маркером над рядом активности. */
+  fieldName?: string;
   /** Без обработчика кнопка «На карте» не рисуется — у поста нет привязанного поля. */
   onMap?: () => void;
   /** Если передан `onEdit` или `onDelete` — в углу поста появляются «три точки». */
@@ -112,6 +114,7 @@ export function PostCard({
   onToggleReaction,
   commentCount,
   onComment,
+  fieldName,
   onMap,
   onEdit,
   onDelete,
@@ -211,6 +214,13 @@ export function PostCard({
         <PostPhotos images={images} unavailable={photosUnavailable} />
       ) : null}
 
+      {fieldName ? (
+        <View style={styles.fieldRow}>
+          <Icon name="map-marker-outline" size={16} color={theme.colors.onSurfaceVariant} />
+          <Text style={styles.fieldText}>{fieldName}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.actions}>
         <View style={styles.actionsLeft}>
           {reactions && onToggleReaction ? (
@@ -289,6 +299,18 @@ const makeStyles = (theme: MD3Theme) =>
       color: theme.colors.onSurfaceVariant,
       fontSize: 14,
       lineHeight: 20,
+    },
+    fieldRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 16,
+      paddingTop: 8,
+      marginBottom: -10,
+    },
+    fieldText: {
+      color: theme.colors.onSurfaceVariant,
+      fontSize: 13,
     },
     actions: {
       flexDirection: 'row',

@@ -175,11 +175,8 @@ export function FieldCardDialog({
           </ScrollView>
         </Dialog.ScrollArea>
         <Dialog.Actions style={styles.actions}>
-          {isMine ? (
-            <Button onPress={onRelatedPosts}>Связанные посты</Button>
-          ) : (
-            <Button onPress={onViewOwner}>Профиль</Button>
-          )}
+          <Button onPress={onRelatedPosts}>Связанные посты</Button>
+          {!isMine ? <Button onPress={onViewOwner}>Профиль</Button> : null}
         </Dialog.Actions>
       </Dialog>
     </Portal>

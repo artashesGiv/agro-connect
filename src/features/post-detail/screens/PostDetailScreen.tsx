@@ -57,6 +57,7 @@ type PostView = {
   images: string[];
   postTypeCode: string;
   fieldId: string | null;
+  fieldName: string | null;
   createdAt: string;
 };
 
@@ -141,6 +142,7 @@ export default function PostDetailScreen({
           .filter((u): u is string => Boolean(u)),
         postTypeCode: fetched.post_types?.code ?? 'field_update',
         fieldId: fetched.field_id,
+        fieldName: fetched.fields?.name ?? null,
         createdAt: fetched.created_at,
       });
       setReactions(
@@ -315,6 +317,7 @@ export default function PostDetailScreen({
                 reactions={reactions}
                 onToggleReaction={handleToggleReaction}
                 commentCount={comments.length}
+                fieldName={post.fieldName ?? undefined}
                 onMap={fieldId ? () => openFieldOnMap(fieldId) : undefined}
               />
             ) : null}
