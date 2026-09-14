@@ -29,6 +29,10 @@ export type Comment = {
   isAi: boolean;
   score: number;
   myVote: -1 | 0 | 1;
+  /** `null` у корневых комментариев и у всех ИИ-комментариев (свои ветки не строят). */
+  parentId: string | null;
+  /** Ник автора непосредственного родителя — только для подписи «Ответ …», без дерева. */
+  replyToName?: string;
 };
 
 function mapRow(row: CommentRow, viewerId: string | undefined): Comment {
@@ -53,6 +57,7 @@ function mapRow(row: CommentRow, viewerId: string | undefined): Comment {
     isAi: false,
     score,
     myVote: mine === 1 ? 1 : mine === -1 ? -1 : 0,
+    parentId: row.parent_answer_id,
   };
 }
 
@@ -73,7 +78,38 @@ function mapAiRow(row: AiCommentRow): Comment {
     isAi: true,
     score: 0,
     myVote: 0,
+    parentId: null,
   };
+}
+
+/**
+ * Раскладывает комментарии в порядок отображения: каждый ответ ставится
+ * сразу под тем, кому адресован (рекурсивно), а не туда, куда попадает по
+ * чистой хронологии — иначе поздний ответ на старый корневой комментарий
+ * визуально выглядит как ответ последнему комментарию в списке. Отступ при
+ * этом остаётся плоским (см. `CommentItem.tsx`) — здесь только порядок.
+ */
+function orderByThread(items: Comment[]): Comment[] {
+  const byParent = new Map<string | null, Comment[]>();
+  for (const item of items) {
+    const key = item.parentId;
+    const bucket = byParent.get(key);
+    if (bucket) bucket.push(item);
+    else byParent.set(key, [item]);
+  }
+  for (const bucket of byParent.values()) {
+    bucket.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  const result: Comment[] = [];
+  const visit = (parentId: string | null) => {
+    for (const item of byParent.get(parentId) ?? []) {
+      result.push(item);
+      if (!item.isAi) visit(item.id);
+    }
+  };
+  visit(null);
+  return result;
 }
 
 /**
@@ -95,10 +131,12 @@ export function useComments(postId: string) {
         listComments(postId),
         listAiComments(postId),
       ]);
-      const merged = [
-        ...rows.map((row) => mapRow(row, viewerId)),
-        ...aiRows.map(mapAiRow),
-      ].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const mappedRows = rows.map((row) => mapRow(row, viewerId));
+      const byId = new Map(mappedRows.map((c) => [c.id, c]));
+      const withReplyTo = mappedRows.map((c) =>
+        c.parentId ? { ...c, replyToName: byId.get(c.parentId)?.author.nickname } : c,
+      );
+      const merged = orderByThread([...withReplyTo, ...aiRows.map(mapAiRow)]);
       setComments(merged);
     } catch (cause) {
       setError(toUserMessage(cause));
@@ -112,10 +150,10 @@ export function useComments(postId: string) {
   }, [load]);
 
   const add = useCallback(
-    async (body: string) => {
+    async (body: string, parentId?: string | null) => {
       if (!viewerId) throw new Error('Сессия не найдена. Войдите заново.');
       try {
-        await addComment(postId, viewerId, body);
+        await addComment(postId, viewerId, body, parentId);
       } catch (cause) {
         throw new Error(toUserMessage(cause));
       }

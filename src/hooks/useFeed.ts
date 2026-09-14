@@ -27,6 +27,7 @@ export type FeedItem = {
   createdAt: string;
   isMine: boolean;
   fieldId: string | null;
+  fieldName?: string;
   author: { id: string; nickname: string; avatarUrl?: string; reputation: number };
   title: string;
   description?: string;
@@ -57,6 +58,7 @@ function mapItem(
     createdAt: post.created_at,
     isMine: viewerId ? post.profiles?.id === viewerId : false,
     fieldId: post.field_id,
+    fieldName: post.fields?.name,
     author: {
       id: post.profiles?.id ?? '',
       nickname: post.profiles?.name ?? 'без имени',
@@ -78,6 +80,8 @@ function mapItem(
 
 export type FeedFilter = {
   cropIds?: number[];
+  /** post_stages.id — тег на самом посте (`posts.stage_id`). */
+  stageIds?: number[];
   search?: string;
   /** Код из `post_types` (`field_update` / `question`) — какой тип постов грузить. */
   postTypeCode?: string;
@@ -99,7 +103,7 @@ export function useFeed(filter: FeedFilter = {}) {
   const { user } = useAuth();
   const viewerId = user?.id;
   const isOnline = useNetworkStatus();
-  const { cropIds, search, postTypeCode, fieldId } = filter;
+  const { cropIds, stageIds, search, postTypeCode, fieldId } = filter;
 
   const [items, setItems] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,7 +115,7 @@ export function useFeed(filter: FeedFilter = {}) {
   const fetchPage = useCallback(
     async (cursor: Cursor): Promise<FeedItem[]> => {
       const [feed, activeTypes] = await Promise.all([
-        getFeed({ limit: PAGE, before: cursor, cropIds, search, postTypeCode, fieldId }),
+        getFeed({ limit: PAGE, before: cursor, cropIds, stageIds, search, postTypeCode, fieldId }),
         dictionaries.getActiveReactionTypes(),
       ]);
       const paths = feed.flatMap((post) =>
@@ -120,10 +124,10 @@ export function useFeed(filter: FeedFilter = {}) {
       const urls = await storage.getPostMediaUrls(paths);
       return feed.map((post) => mapItem(post, urls, activeTypes, viewerId));
     },
-    [viewerId, cropIds, search, postTypeCode, fieldId],
+    [viewerId, cropIds, stageIds, search, postTypeCode, fieldId],
   );
 
-  const cacheable = !search && !cropIds?.length && !fieldId;
+  const cacheable = !search && !cropIds?.length && !stageIds?.length && !fieldId;
 
   /**
    * Первая страница с фолбэком в кэш при ошибке (в первую очередь — без сети).

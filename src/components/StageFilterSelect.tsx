@@ -4,34 +4,32 @@ import { Chip, Menu, type MD3Theme } from 'react-native-paper';
 
 import { Icon } from '@/components/Icon';
 import { useAppTheme } from '@/theme';
-import type { CropOption } from '@/hooks/useCrops';
+import type { PostStage } from '@/services/supabase';
 
 type Props = {
-  crops: CropOption[];
+  stages: PostStage[];
   value: number[];
   onChange: (ids: number[]) => void;
 };
 
-function summarize(crops: CropOption[], value: number[]): string {
-  if (value.length === 0) return 'Культура';
+function summarize(stages: PostStage[], value: number[]): string {
+  if (value.length === 0) return 'Статус';
   if (value.length === 1) {
-    return crops.find((crop) => crop.id === value[0])?.name ?? 'Культура';
+    return stages.find((stage) => stage.id === value[0])?.name ?? 'Статус';
   }
-  return `Культура (${value.length})`;
+  return `Статус (${value.length})`;
 }
 
 /**
- * Селект-мультивыбор по культуре: чип-триггер + всплывающее `Menu` рядом с ним
- * (тот же приём, что попап реакций по кнопке лайка — `ReactionControl.tsx`).
- * В отличие от него тап по пункту не закрывает меню — реакция там одна, тут
- * можно отметить несколько культур подряд.
+ * Селект-мультивыбор по статусу (стадии) поста: чип-триггер + всплывающее
+ * `Menu` — точная копия паттерна `CropFilterSelect.tsx`, только по `post_stages`.
  */
-export function CropFilterSelect({ crops, value, onChange }: Props) {
+export function StageFilterSelect({ stages, value, onChange }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const [open, setOpen] = useState(false);
 
-  if (crops.length === 0) return null;
+  if (stages.length === 0) return null;
 
   const toggle = (id: number) => {
     onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
@@ -49,7 +47,7 @@ export function CropFilterSelect({ crops, value, onChange }: Props) {
           onPress={() => setOpen(true)}
           style={styles.chip}
         >
-          {summarize(crops, value)}
+          {summarize(stages, value)}
         </Chip>
       }
     >
@@ -57,11 +55,11 @@ export function CropFilterSelect({ crops, value, onChange }: Props) {
         {value.length > 0 ? (
           <Menu.Item title="Сбросить всё" onPress={() => onChange([])} />
         ) : null}
-        {crops.map((crop) => {
-          const checked = value.includes(crop.id);
+        {stages.map((stage) => {
+          const checked = value.includes(stage.id);
           return (
             <Menu.Item
-              key={crop.id}
+              key={stage.id}
               leadingIcon={() => (
                 <Icon
                   name={checked ? 'check-circle' : 'circle-outline'}
@@ -69,9 +67,9 @@ export function CropFilterSelect({ crops, value, onChange }: Props) {
                   color={checked ? theme.colors.primary : theme.colors.onSurfaceVariant}
                 />
               )}
-              title={crop.name}
+              title={stage.name}
               titleStyle={styles.menuItemText}
-              onPress={() => toggle(crop.id)}
+              onPress={() => toggle(stage.id)}
             />
           );
         })}
@@ -84,8 +82,8 @@ const makeStyles = (theme: MD3Theme) =>
   StyleSheet.create({
     chip: {
       alignSelf: 'flex-start',
-      marginLeft: 16,
-      marginRight: 6,
+      marginLeft: 6,
+      marginRight: 16,
       marginVertical: 8,
       backgroundColor: theme.colors.surface,
     },

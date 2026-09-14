@@ -1,6 +1,6 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Keyboard, StyleSheet, Text, View } from 'react-native';
 import {
   Button,
   IconButton,
@@ -20,6 +20,7 @@ import { toUserMessage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
 
 import { FieldCropsDialog } from '../components/FieldCropsDialog';
+import { FieldStageDialog } from '../components/FieldStageDialog';
 import { FieldCardDialog } from '../components/FieldCardDialog';
 import { FieldFormDialog } from '../components/FieldFormDialog';
 import { MapGLView, type MapGLViewHandle } from '../components/MapGLView';
@@ -101,6 +102,7 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
   const [pending, setPending] = useState<Pending | null>(null);
   /** Поле, по которому тапнули: показываем карточку. */
   const [cropsField, setCropsField] = useState<Field | null>(null);
+  const [stageField, setStageField] = useState<Field | null>(null);
   const [cardFieldId, setCardFieldId] = useState<string | null>(null);
   /** Поле, чью геометрию сейчас правим. `null` — создаём новое. */
   const [geometryTargetId, setGeometryTargetId] = useState<string | null>(null);
@@ -363,6 +365,17 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
     mapRef.current?.setFieldTaps(true);
   }, []);
 
+  /**
+   * Закрыть под-диалог поля (культуры/статус/название) и вернуться к
+   * карточке этого же поля — скрыв клавиатуру, если она была открыта
+   * (текстовые поля есть только у формы «Название и регион», но дёшево
+   * дёргать всегда, чем разбирать по диалогам).
+   */
+  const returnToFieldCard = useCallback((fieldId: string) => {
+    Keyboard.dismiss();
+    setCardFieldId(fieldId);
+  }, []);
+
   const handleSave = useCallback(
     async (values: FieldFormValues) => {
       if (!pending) return;
@@ -381,6 +394,7 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
           // контур, который мы даже не показывали в этой форме.
           await updateField(pending.id, { name: values.name, region });
           setPending(null);
+          returnToFieldCard(pending.id);
           setSnack('Поле обновлено');
         } else {
           const geometry = pending.geometry;
@@ -407,7 +421,7 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
         setSaving(false);
       }
     },
-    [pending, reload, stopDrawing, user],
+    [pending, reload, returnToFieldCard, stopDrawing, user],
   );
 
   // Раньше `error` из `useFields` не использовался нигде: неудачная загрузка
@@ -628,6 +642,10 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
         }}
         onEditInfo={editInfo}
         onEditGeometry={editGeometry}
+        onEditStage={() => {
+          setStageField(cardField);
+          setCardFieldId(null);
+        }}
         onDelete={requestDeleteField}
         onViewOwner={() => {
           if (!cardField) return;
@@ -649,12 +667,30 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
           key={cropsField.id}
           field={cropsField}
           onClose={() => {
-            setCardFieldId(cropsField.id);
+            returnToFieldCard(cropsField.id);
             setCropsField(null);
           }}
           onSaved={() => {
+            returnToFieldCard(cropsField.id);
             setCropsField(null);
             setSnack('Культуры поля сохранены');
+            void reload();
+          }}
+        />
+      ) : null}
+
+      {stageField ? (
+        <FieldStageDialog
+          key={stageField.id}
+          field={stageField}
+          onClose={() => {
+            returnToFieldCard(stageField.id);
+            setStageField(null);
+          }}
+          onSaved={() => {
+            returnToFieldCard(stageField.id);
+            setStageField(null);
+            setSnack('Статус поля сохранён');
             void reload();
           }}
         />
@@ -668,6 +704,7 @@ export default function MapScreen({ navigation, route }: MapScreenProps) {
         saving={saving}
         error={saveError}
         onCancel={() => {
+          if (pending?.kind === 'info') returnToFieldCard(pending.id);
           setPending(null);
           setSaveError(null);
         }}

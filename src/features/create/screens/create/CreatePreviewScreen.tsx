@@ -85,6 +85,7 @@ export default function CreatePreviewScreen({
       title: data.title,
       body: data.body,
       fieldId: data.fieldId,
+      stageId: data.stageId,
     };
     const newPhotos = data.photos
       .filter((photo) => photo.kind === 'new')

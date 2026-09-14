@@ -24,9 +24,13 @@ profiles
     │      │
     │      ├── post_media
     │      ├── post_reactions
-    │      └── answers
-    │             │
-    │             └── answer_votes
+    │      ├── answers (self-ref. parent_answer_id)
+    │      │      │
+    │      │      └── answer_votes
+    │      │
+    │      └── post_ai_runs → post_comments (self-ref. parent_comment_id)
+    │                              ↑
+    │                        system_actors
     │
     └── reputation
 ```
@@ -111,8 +115,16 @@ RLS:
 | `region` | text nullable | регион |
 | `center` | PostGIS Point nullable | точка |
 | `boundary` | PostGIS Polygon nullable | контур |
+| `crops` | jsonb | список культур поля |
+| `current_crop` | jsonb nullable | текущая культура поля (объект с `id` и т.д.) |
+| `current_stage_id` | int nullable, `→ post_stages.id` | текущая аграрная стадия поля |
 | `created_at` | timestamptz | создано |
 | `updated_at` | timestamptz | обновлено |
+
+`posts.crop_id` синхронизируется сервером (`sync_post_crop_id_from_field()`) из
+`fields.current_crop.id` выбранного `field_id` — фронту не нужно (и нельзя)
+самому подставлять произвольный `crop_id` при создании поста, привязанного к
+полю.
 
 Получить свои поля:
 
@@ -479,6 +491,25 @@ const { data } = supabase.storage
 const avatarUrl = data.publicUrl
 ```
 
+### RLS `storage.objects` для `avatars`
+
+```text
+INSERT: (bucket_id = 'avatars') AND (storage.foldername(name))[1] = auth.uid()::text
+UPDATE: USING owner_id = auth.uid()::text
+        WITH CHECK (storage.foldername(name))[1] = auth.uid()::text
+DELETE: owner_id = auth.uid()::text
+SELECT: (bucket_id = 'avatars') AND owner_id = auth.uid()::text   -- "users can select own avatar objects"
+```
+
+Политика `SELECT` — добавлена бэкендом отдельно (изначально её не было).
+`upload(path, body, { upsert: true })` внутри делает проверку существования
+объекта (`SELECT`) перед вставкой/обновлением строки в `storage.objects`; без
+этой политики RLS блокировал саму проверку, и клиент получал `403 "new row
+violates row-level security policy"` на **любую** повторную загрузку аватара
+(даже первую, если файл с таким путём уже был создан ранее). Проблема не в
+коде приложения — путь и `contentType` формировались верно, `upsert: true`
+корректен для файла с фиксированным именем на пользователя.
+
 ## 11. Реакции
 
 Справочник `reaction_types`:
@@ -537,7 +568,16 @@ post_type.code = question
 
 Ответы — `answers`.
 
-Добавить:
+| Поле | Описание |
+|---|---|
+| `id` | uuid |
+| `post_id` | вопрос/пост |
+| `author_id` | автор |
+| `body` | текст |
+| `parent_answer_id` | uuid nullable, `→ answers.id`, `on delete cascade` — родительский ответ, для древовидных веток |
+| `created_at` / `updated_at` | таймстемпы |
+
+Добавить (корневой ответ или ветку — `parent_answer_id` опционален):
 
 ```ts
 const { data, error } = await supabase
@@ -546,12 +586,13 @@ const { data, error } = await supabase
     post_id: postId,
     author_id: user.id,
     body: answerText,
+    parent_answer_id: replyToAnswerId ?? null,
   })
   .select()
   .single()
 ```
 
-Получить:
+Получить (сортировка по `created_at`, дерево строится на клиенте из `parent_answer_id`):
 
 ```ts
 const { data, error } = await supabase
@@ -560,6 +601,7 @@ const { data, error } = await supabase
     id,
     body,
     created_at,
+    parent_answer_id,
     profiles!answers_author_id_fkey (
       id,
       name,
@@ -570,6 +612,17 @@ const { data, error } = await supabase
   .eq('post_id', postId)
   .order('created_at')
 ```
+
+Триггер `validate_answer_parent()` проверяет на запись:
+
+- родитель существует;
+- `parent.post_id = child.post_id` (нельзя сослаться на ответ из другого поста);
+- нельзя сослаться на себя;
+- нельзя создать цикл.
+
+При удалении родительского ответа вся его ветка удаляется каскадно
+(`on delete cascade`). `answer_votes.answer_id` продолжает ссылаться на
+`answers.id` без изменений — голосование работает и для вложенных ответов.
 
 ## 13. Голоса за ответы — `answer_votes`
 
@@ -594,7 +647,46 @@ await supabase
 
 Один пользователь может иметь только один vote на конкретный answer.
 
-## 14. Репутация
+## 14. ИИ и системные комментарии
+
+Отдельная от `answers` таблица **`post_comments`** — пишет туда только Edge
+Function `process-ai-post` (и другая системная автоматика); обычные
+пользователи через клиент туда не пишут.
+
+| Поле | Описание |
+|---|---|
+| `id` | uuid |
+| `post_id` | пост |
+| `author_id` | uuid nullable — `null` у ИИ/системных комментариев |
+| `system_actor_id` | uuid nullable, `→ system_actors.id` — не `null` у ИИ |
+| `ai_run_id` | uuid nullable, `→ post_ai_runs.id` (`one-to-one`) |
+| `body` | текст |
+| `parent_comment_id` | uuid nullable, `→ post_comments.id`, `on delete cascade` — та же логика веток, что и у `answers.parent_answer_id` |
+| `created_at` / `updated_at` | таймстемпы |
+
+Читать может фронт (`read-only` со стороны клиента):
+
+```ts
+const { data, error } = await supabase
+  .from('post_comments')
+  .select('id, body, created_at, updated_at, system_actor_id, parent_comment_id')
+  .eq('post_id', postId)
+  .order('created_at')
+```
+
+`system_actors` — справочник системных/ИИ-акторов (`id, code, name,
+avatar_path, description`) для случаев, когда `system_actor_id` не `null`, но
+своего профиля в `profiles` у актора нет.
+
+`post_ai_runs` — журнал запусков ИИ-генерации ответа: `id, post_id,
+requested_by, feature, status, input, result, metadata, error, created_at,
+started_at, completed_at, updated_at`. Значения `status`, поведение при
+ошибке и стабильность конкретного `system_actor_id` между окружениями не
+гарантированы официально — фронт должен опираться только на «`system_actor_id`
+не `null`», а не на конкретное значение. RLS не запрещает фронту читать
+`post_ai_runs`, но клиент им пока не пользуется.
+
+## 15. Репутация
 
 Уже есть:
 
@@ -610,7 +702,7 @@ profiles.reputation
 
 Автоматическое начисление репутации пока **не реализовано**. Это добавим, когда определим правила рангов и очков.
 
-## 15. RLS — кратко
+## 16. RLS — кратко
 
 ```text
 profiles
@@ -636,15 +728,20 @@ INSERT/DELETE: только от своего user_id
 answers
 READ: authenticated
 INSERT/UPDATE/DELETE: только свои
+(parent_answer_id: тот же post_id, без self-parent/циклов — валидируется триггером)
 
 answer_votes
 READ: authenticated
 INSERT/UPDATE/DELETE: только свои
+
+post_comments / post_ai_runs / system_actors
+READ: authenticated
+WRITE: только сервис (Edge Function), фронт не пишет
 ```
 
 Справочники доступны на чтение клиенту.
 
-## 16. `public.users` — НЕ ИСПОЛЬЗОВАТЬ
+## 17. `public.users` — НЕ ИСПОЛЬЗОВАТЬ
 
 В проекте осталась старая тестовая таблица:
 
@@ -678,7 +775,7 @@ profiles
 
 Пароль пользователя самостоятельно в БД не храним.
 
-## 17. Что пока не сделано
+## 18. Что пока не сделано
 
 - список `crops`;
 - правила начисления `reputation`;
@@ -690,7 +787,7 @@ profiles
 - Realtime;
 - специализированные geo-query функции.
 
-## 18. `database.types.ts`
+## 19. `database.types.ts`
 
 Файл сгенерирован из текущей Supabase schema.
 

@@ -1,12 +1,21 @@
-import { NavigationContainer } from '@react-navigation/native';
+import { createNavigationContainerRef, NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 
 import { AuthNavigator } from '../features/auth';
+import { NewNotificationBanner } from '@/components/NewNotificationBanner';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { useAuth } from '@/services/auth';
 import { appTheme, navigationTheme } from '@/theme';
 import { AppNavigator } from './AppNavigator';
+import type { AppStackParamList } from './types';
+
+/**
+ * Баннер уведомлений рисуется вне `AppNavigator` (поверх любой вкладки), но
+ * тап по нему должен перейти на экран `Notifications` внутри него — обычный
+ * `useNavigation()` тут недоступен, поэтому переходим через ref контейнера.
+ */
+const navigationRef = createNavigationContainerRef<AppStackParamList>();
 
 /**
  * Гейт авторизации. Пока `status === 'loading'` — восстанавливаем сессию
@@ -28,10 +37,17 @@ export function RootNavigator() {
     <View style={{ flex: 1, backgroundColor: appTheme.colors.background }}>
       <OfflineBanner />
       <View style={{ flex: 1 }}>
-        <NavigationContainer theme={navigationTheme}>
+        <NavigationContainer ref={navigationRef} theme={navigationTheme}>
           <StatusBar style="dark" />
           {status === 'authenticated' ? <AppNavigator /> : <AuthNavigator />}
         </NavigationContainer>
+        {status === 'authenticated' ? (
+          <NewNotificationBanner
+            onPress={() => {
+              if (navigationRef.isReady()) navigationRef.navigate('Notifications');
+            }}
+          />
+        ) : null}
       </View>
     </View>
   );

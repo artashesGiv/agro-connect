@@ -32,6 +32,8 @@ export type Field = {
   id: string;
   crops: FieldCrop[];
   current_crop: FieldCrop | null;
+  /** `→ post_stages.id`; имя резолвится на клиенте через `dictionaries.getPostStages()`. */
+  current_stage_id: number | null;
   owner_id: string;
   owner: FieldOwner | null;
   name: string;
@@ -50,7 +52,7 @@ export type NewField = {
 };
 
 const SCALAR_COLUMNS =
-  'id, owner_id, name, region, created_at, updated_at, crops, current_crop, ' +
+  'id, owner_id, name, region, created_at, updated_at, crops, current_crop, current_stage_id, ' +
   'profiles!fields_owner_id_fkey(name, specialization, region, avatar_path)';
 
 /**
@@ -167,6 +169,23 @@ export async function updateFieldCrops(
   throw new Error('Сервер разрешает читать поле, но не разрешил обновить культуры. Проверьте политику UPDATE для fields.');
 }
 
+/** `stageId: null` очищает статус. Геометрия и остальные метаданные не трогаются. */
+export async function updateFieldStage(id: string, stageId: number | null): Promise<void> {
+  const { data, error } = await supabase.from('fields').update({
+    current_stage_id: stageId,
+  }).eq('id', id).select('id').maybeSingle();
+  if (error) throw error;
+  if (data) return;
+
+  // An UPDATE that matches no rows returns 200 with an empty array under RLS.
+  // Read back to distinguish an invisible field from an update policy denial.
+  const checked = await supabase.from('fields')
+    .select('id, current_stage_id').eq('id', id).maybeSingle();
+  if (checked.error) throw checked.error;
+  if (!checked.data) throw new Error('Поле больше недоступно. Обновите список полей.');
+  throw new Error('Сервер разрешает читать поле, но не разрешил обновить статус. Проверьте политику UPDATE для fields.');
+}
+
 export async function deleteField(id: string): Promise<void> {
   const { error } = await supabase.from('fields').delete().eq('id', id);
   if (error) throw error;
@@ -279,6 +298,7 @@ function readField(feature: GeoFeature, rings: Map<string, Coordinates[]>): Fiel
     id,
     crops: readCrops(row.crops),
     current_crop: readCrops([row.current_crop])[0] ?? null,
+    current_stage_id: typeof row.current_stage_id === 'number' ? row.current_stage_id : null,
     owner_id: ownerId,
     owner: readOwner(row.profiles),
     name,

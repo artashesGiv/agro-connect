@@ -1,17 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text as RNText, View } from 'react-native';
-import {
-  Button,
-  Dialog,
-  IconButton,
-  Menu,
-  Text,
-  type MD3Theme,
-  Portal,
-} from 'react-native-paper';
+import { Button, IconButton, Menu, Text, type MD3Theme } from 'react-native-paper';
 
+import { BottomSheetModal } from '@/components/BottomSheetModal';
 import { Icon } from '@/components/Icon';
+import { dictionaries, type PostStage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
+
+import { FieldWeatherDialog } from './FieldWeatherDialog';
 
 import type { Field } from '@/services/fields';
 
@@ -23,6 +19,7 @@ type FieldCardDialogProps = {
   onEditInfo: () => void;
   onEditCrops: () => void;
   onEditGeometry: () => void;
+  onEditStage: () => void;
   onDelete: () => void;
   onViewOwner: () => void;
   onRelatedPosts: () => void;
@@ -44,6 +41,7 @@ export function FieldCardDialog({
   onEditInfo,
   onEditCrops,
   onEditGeometry,
+  onEditStage,
   onDelete,
   onViewOwner,
   onRelatedPosts,
@@ -51,10 +49,26 @@ export function FieldCardDialog({
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [weatherOpen, setWeatherOpen] = useState(false);
+  const [stages, setStages] = useState<PostStage[]>([]);
+
+  // Справочник маленький (5 строк) и не критичен: не находим имя — просто
+  // покажем «стадия #N» вместо падения карточки.
+  useEffect(() => {
+    let active = true;
+    dictionaries.getPostStages().then((data) => {
+      if (active) setStages(data);
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  const stageName = field?.current_stage_id
+    ? stages.find((s) => s.id === field.current_stage_id)?.name ?? `стадия #${field.current_stage_id}`
+    : 'не указан';
 
   return (
-    <Portal>
-      <Dialog visible={field !== null} onDismiss={onClose}>
+    <>
+    <BottomSheetModal visible={field !== null} onClose={onClose}>
         <View style={styles.header}>
           <Text
             variant="headlineSmall"
@@ -63,6 +77,11 @@ export function FieldCardDialog({
           >
             {field?.name ?? ''}
           </Text>
+          <IconButton
+            icon="weather-cloudy"
+            onPress={() => setWeatherOpen(true)}
+            accessibilityLabel="Погода на поле"
+          />
           {isMine ? (
             <Menu
               visible={menuOpen}
@@ -100,6 +119,17 @@ export function FieldCardDialog({
               />
               <Menu.Item
                 leadingIcon={() => (
+                  <Icon name="progress-check" size={20} color={theme.colors.onSurface} />
+                )}
+                title="Статус"
+                titleStyle={styles.menuItemText}
+                onPress={() => {
+                  setMenuOpen(false);
+                  onEditStage();
+                }}
+              />
+              <Menu.Item
+                leadingIcon={() => (
                   <Icon name="pencil-outline" size={20} color={theme.colors.onSurface} />
                 )}
                 title="Название и регион"
@@ -122,39 +152,40 @@ export function FieldCardDialog({
               />
             </Menu>
           ) : null}
+          <IconButton icon="close" onPress={onClose} accessibilityLabel="Закрыть" />
         </View>
-        <Dialog.ScrollArea style={styles.scrollArea}>
-          <ScrollView contentContainerStyle={styles.scrollContent}>
-            {!isMine ? (
-              <Row label="Владелец" value={field?.owner?.name ?? 'без имени'} styles={styles} />
-            ) : null}
-            <Row label="Регион" value={field?.region ?? 'не указан'} styles={styles} />
-            <Row
-              label="Границы"
-              value={field?.boundary ? `контур, ${field.boundary.length} точек` : 'только точка'}
-              styles={styles}
-            />
-            <Row
-              label="Культуры"
-              value={field?.crops.map((crop) => crop.name).join(', ') || 'не выбраны'}
-              styles={styles}
-            />
-            <Row label="Основная культура" value={field?.current_crop?.name ?? 'не указана'} styles={styles} />
-            <Row label="Создано" value={formatDate(field?.created_at)} styles={styles} />
-          </ScrollView>
-        </Dialog.ScrollArea>
-        <Dialog.Actions style={styles.actions}>
-          {isMine ? (
-            <Button onPress={onRelatedPosts}>Связанные посты</Button>
-          ) : (
-            <Button onPress={onViewOwner}>Профиль</Button>
-          )}
-          <Button mode="contained" onPress={onClose}>
-            Закрыть
-          </Button>
-        </Dialog.Actions>
-      </Dialog>
-    </Portal>
+        <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
+          {!isMine ? (
+            <Row label="Владелец" value={field?.owner?.name ?? 'без имени'} styles={styles} />
+          ) : null}
+          <Row label="Регион" value={field?.region ?? 'не указан'} styles={styles} />
+          <Row
+            label="Границы"
+            value={field?.boundary ? `контур, ${field.boundary.length} точек` : 'только точка'}
+            styles={styles}
+          />
+          <Row
+            label="Культуры"
+            value={field?.crops.map((crop) => crop.name).join(', ') || 'не выбраны'}
+            styles={styles}
+          />
+          <Row label="Основная культура" value={field?.current_crop?.name ?? 'не указана'} styles={styles} />
+          <Row label="Статус" value={stageName} styles={styles} />
+          <Row label="Создано" value={formatDate(field?.created_at)} styles={styles} />
+        </ScrollView>
+        <View style={styles.actions}>
+          <Button onPress={onRelatedPosts}>Связанные посты</Button>
+          {!isMine ? <Button onPress={onViewOwner}>Профиль</Button> : null}
+        </View>
+    </BottomSheetModal>
+
+    <FieldWeatherDialog
+      fieldId={field?.id ?? null}
+      fieldName={field?.name ?? ''}
+      visible={weatherOpen}
+      onClose={() => setWeatherOpen(false)}
+    />
+    </>
   );
 }
 
@@ -188,12 +219,10 @@ const makeStyles = (theme: MD3Theme) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingLeft: 24,
-      paddingRight: 12,
+      marginBottom: 16,
     },
     headerTitle: {
       flex: 1,
-      marginBottom: 16,
       color: theme.colors.onSurface,
     },
     menuContent: {
@@ -230,6 +259,9 @@ const makeStyles = (theme: MD3Theme) =>
       textAlign: 'right',
     },
     actions: {
+      flexDirection: 'row',
       justifyContent: 'flex-end',
+      gap: 4,
+      marginTop: 8,
     },
   });

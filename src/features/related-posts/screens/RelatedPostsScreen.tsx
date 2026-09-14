@@ -199,6 +199,7 @@ export default function RelatedPostsScreen({
                 }
               : undefined
           }
+          fieldName={item.fieldName}
           onMap={itemFieldId ? () => openFieldOnMap(itemFieldId) : undefined}
         />
       );

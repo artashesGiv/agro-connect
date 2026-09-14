@@ -16,6 +16,32 @@ if (!url || !publishableKey) {
 }
 
 /**
+ * Без таймаута зависший `fetch` (спящий проект, обрыв сети, прокси) вешает
+ * экран на неопределённый срок — `useFeed`/репозитории умеют показать
+ * ошибку, но только если промис вообще settled.
+ */
+const FETCH_TIMEOUT_MS = 15000;
+
+function withTimeout(fetchImpl: typeof fetch): typeof fetch {
+  return async (input, init) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      return await fetchImpl(input, { ...init, signal: init?.signal ?? controller.signal });
+    } catch (cause) {
+      if (controller.signal.aborted) {
+        throw new Error(
+          'Превышено время ожидания ответа сервера. Проверьте соединение и повторите.',
+        );
+      }
+      throw cause;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+}
+
+/**
  * Единственный клиент приложения. Держит сессию в AsyncStorage, сам рефрешит
  * токен и подставляет JWT в каждый запрос — своего слоя с токеном больше нет.
  */
@@ -27,17 +53,28 @@ export const supabase = createClient<Database>(url, publishableKey, {
     // Deep link с токеном в приложении не разбираем — это про web.
     detectSessionInUrl: false,
   },
-  // TEMP: логируем каждый запрос — Network-таб DevTools недоступен под Expo Go.
-  global: __DEV__
-    ? {
-        fetch: async (input, init) => {
+  global: {
+    // TEMP: логируем каждый запрос — Network-таб DevTools недоступен под Expo Go.
+    fetch: __DEV__
+      ? async (input, init) => {
           const method = init?.method ?? 'GET';
           console.log('[supabase]', method, input);
-          const response = await fetch(input, init);
-          const body = await response.clone().text();
-          console.log('[supabase]', method, input, '->', response.status, body);
-          return response;
-        },
-      }
-    : undefined,
+          try {
+            const response = await withTimeout(fetch)(input, init);
+            const body = await response.clone().text();
+            console.log('[supabase]', method, input, '->', response.status, body);
+            return response;
+          } catch (cause) {
+            console.log(
+              '[supabase]',
+              method,
+              input,
+              '-> ERROR',
+              cause instanceof Error ? cause.message : cause,
+            );
+            throw cause;
+          }
+        }
+      : withTimeout(fetch),
+  },
 });

@@ -82,6 +82,8 @@ type PostCardProps = {
   onToggleReaction?: (code: string) => void;
   commentCount?: number;
   onComment?: () => void;
+  /** Название привязанного поля — строка с гео-маркером над рядом активности. */
+  fieldName?: string;
   /** Без обработчика кнопка «На карте» не рисуется — у поста нет привязанного поля. */
   onMap?: () => void;
   /** Если передан `onEdit` или `onDelete` — в углу поста появляются «три точки». */
@@ -112,6 +114,7 @@ export function PostCard({
   onToggleReaction,
   commentCount,
   onComment,
+  fieldName,
   onMap,
   onEdit,
   onDelete,
@@ -141,8 +144,10 @@ export function PostCard({
               color={theme.colors.onSurfaceVariant}
             />
           )}
-          <Text style={styles.nickname}>{author.nickname}</Text>
-          <ReputationBadge value={author.reputation} />
+          <View style={styles.nameColumn}>
+            <ReputationBadge value={author.reputation} nickname={author.nickname} isMine={hasMenu} />
+            <Text style={styles.nickname}>{author.nickname}</Text>
+          </View>
         </Pressable>
 
         {hasMenu ? (
@@ -224,7 +229,18 @@ export function PostCard({
             count={commentCount}
             onPress={onComment}
           />
-          {onMap ? <PostAction icon="map-outline" label="На карте" onPress={onMap} /> : null}
+          {onMap && fieldName ? (
+            <Pressable
+              onPress={onMap}
+              hitSlop={6}
+              style={({ pressed }) => [actionStyles.action, pressed && actionStyles.pressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`Поле ${fieldName} на карте`}
+            >
+              <Icon name="map-outline" size={18} color={theme.colors.onSurfaceVariant} />
+              <Text style={styles.fieldText}>{fieldName}</Text>
+            </Pressable>
+          ) : null}
         </View>
         {createdAt ? <Text style={styles.date}>{formatDateTime(createdAt)}</Text> : null}
       </View>
@@ -263,6 +279,9 @@ const makeStyles = (theme: MD3Theme) =>
       alignItems: 'center',
       gap: 10,
     },
+    nameColumn: {
+      flex: 1,
+    },
     date: {
       color: theme.colors.onSurfaceVariant,
       fontSize: 12,
@@ -289,6 +308,10 @@ const makeStyles = (theme: MD3Theme) =>
       color: theme.colors.onSurfaceVariant,
       fontSize: 14,
       lineHeight: 20,
+    },
+    fieldText: {
+      color: theme.colors.onSurfaceVariant,
+      fontSize: 13,
     },
     actions: {
       flexDirection: 'row',
