@@ -4,6 +4,8 @@ import { Avatar, Text, type MD3Theme } from 'react-native-paper';
 
 import { useAppTheme } from '@/theme';
 
+import { ReputationBadge } from './ReputationBadge';
+
 /** Данные профиля для отображения — подмножество строки `profiles`, независимое
  *  от сессии: тем же компонентом показываем и свой профиль, и чужой. */
 export type ProfileInfoData = {
@@ -11,6 +13,7 @@ export type ProfileInfoData = {
   specialization?: string;
   region?: string;
   avatarUrl?: string;
+  reputation?: number;
 };
 
 /** Тексты-подсказки для незаполненных полей. Задаёт родитель: у своего профиля —
@@ -63,7 +66,18 @@ export function ProfileInfo({ profile, placeholders }: ProfileInfoProps) {
         />
       )}
       <View style={styles.column}>
-        {line(profile.name, placeholders?.name, true)}
+        {(() => {
+          const nameNode = line(profile.name, placeholders?.name, true);
+          if (!nameNode) return null;
+          return (
+            <View style={styles.nameRow}>
+              {nameNode}
+              {profile.reputation !== undefined ? (
+                <ReputationBadge value={profile.reputation} />
+              ) : null}
+            </View>
+          );
+        })()}
         {line(profile.specialization, placeholders?.specialization)}
         {line(profile.region, placeholders?.region)}
       </View>
@@ -90,6 +104,11 @@ const makeStyles = (theme: MD3Theme) =>
       color: theme.colors.onSurface,
       fontSize: 18,
       fontWeight: '700',
+    },
+    nameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
     },
     detail: {
       color: theme.colors.onSurfaceVariant,

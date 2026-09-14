@@ -14,7 +14,7 @@ export default function CreatePhotosScreen({
 
   return (
     <CreateStepLayout
-      step={3}
+      step={2}
       title="Фото"
       subtitle="Сфотографируйте или выберите из галереи. Не обязательно."
       onBack={navigation.goBack}

@@ -19,7 +19,8 @@ const AI_AUTHOR_NAME = 'ИИ-помощник';
 
 export type Comment = {
   id: string;
-  author: { nickname: string; avatarUrl?: string };
+  /** `author.id`/`reputation` не заданы у ИИ-комментариев — своего профиля у ИИ нет. */
+  author: { id?: string; nickname: string; avatarUrl?: string; reputation?: number };
   body: string;
   createdAt: string;
   /** Задано, если комментарий редактировали. */
@@ -38,10 +39,12 @@ function mapRow(row: CommentRow, viewerId: string | undefined): Comment {
   return {
     id: row.id,
     author: {
+      id: row.author_id,
       nickname: row.profiles?.name ?? 'без имени',
       avatarUrl: row.profiles?.avatar_path
         ? storage.getAvatarUrl(row.profiles.avatar_path)
         : undefined,
+      reputation: row.profiles?.reputation ?? 0,
     },
     body: row.body,
     createdAt: row.created_at,

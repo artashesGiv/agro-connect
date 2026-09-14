@@ -27,4 +27,17 @@ export const supabase = createClient<Database>(url, publishableKey, {
     // Deep link с токеном в приложении не разбираем — это про web.
     detectSessionInUrl: false,
   },
+  // TEMP: логируем каждый запрос — Network-таб DevTools недоступен под Expo Go.
+  global: __DEV__
+    ? {
+        fetch: async (input, init) => {
+          const method = init?.method ?? 'GET';
+          console.log('[supabase]', method, input);
+          const response = await fetch(input, init);
+          const body = await response.clone().text();
+          console.log('[supabase]', method, input, '->', response.status, body);
+          return response;
+        },
+      }
+    : undefined,
 });

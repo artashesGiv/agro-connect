@@ -30,12 +30,13 @@ import { CommentItem } from '../components/CommentItem';
 import { useComments } from '../hooks/useComments';
 
 type PostView = {
-  author: { nickname: string; avatarUrl?: string };
+  author: { id: string; nickname: string; avatarUrl?: string; reputation: number };
   title: string;
   description?: string;
   images: string[];
   postTypeCode: string;
   fieldId: string | null;
+  createdAt: string;
 };
 
 /** Формулировки зависят от типа поста: вопрос → «ответы», иначе → «комментарии». */
@@ -103,10 +104,12 @@ export default function PostDetailScreen({
       const urls = await storage.getPostMediaUrls(media.map((m) => m.storage_path));
       setPost({
         author: {
+          id: fetched.profiles?.id ?? '',
           nickname: fetched.profiles?.name ?? 'без имени',
           avatarUrl: fetched.profiles?.avatar_path
             ? storage.getAvatarUrl(fetched.profiles.avatar_path)
             : undefined,
+          reputation: fetched.profiles?.reputation ?? 0,
         },
         title: fetched.title ?? 'Без заголовка',
         description: fetched.body ?? undefined,
@@ -115,6 +118,7 @@ export default function PostDetailScreen({
           .filter((u): u is string => Boolean(u)),
         postTypeCode: fetched.post_types?.code ?? 'field_update',
         fieldId: fetched.field_id,
+        createdAt: fetched.created_at,
       });
       setReactions(
         summarizeReactions(fetched.post_reactions ?? [], activeTypes, user?.id),
@@ -188,6 +192,17 @@ export default function PostDetailScreen({
     [navigation],
   );
 
+  const openAuthor = useCallback(
+    (authorId: string) => {
+      if (authorId && authorId === user?.id) {
+        navigation.navigate('Tabs', { screen: 'Profile' });
+      } else {
+        navigation.navigate('UserProfile', { userId: authorId });
+      }
+    },
+    [navigation, user?.id],
+  );
+
   const handleVote = useCallback(
     async (id: string, value: -1 | 1) => {
       try {
@@ -239,6 +254,8 @@ export default function PostDetailScreen({
                 title={post.title}
                 description={post.description}
                 images={post.images}
+                onAuthorPress={() => openAuthor(post.author.id)}
+                createdAt={post.createdAt}
                 reactions={reactions}
                 onToggleReaction={handleToggleReaction}
                 commentCount={comments.length}
@@ -256,18 +273,22 @@ export default function PostDetailScreen({
               <Text style={styles.stateText}>{terms.empty}</Text>
             ) : null}
 
-            {comments.map((comment) => (
-              <CommentItem
-                key={comment.id}
-                comment={comment}
-                onVote={(value) => handleVote(comment.id, value)}
-                onEdit={() => setEditing({ id: comment.id, initialText: comment.body })}
-                onDelete={() => {
-                  setDeleteError(null);
-                  setPendingDeleteId(comment.id);
-                }}
-              />
-            ))}
+            {comments.map((comment) => {
+              const authorId = comment.author.id;
+              return (
+                <CommentItem
+                  key={comment.id}
+                  comment={comment}
+                  onVote={(value) => handleVote(comment.id, value)}
+                  onEdit={() => setEditing({ id: comment.id, initialText: comment.body })}
+                  onDelete={() => {
+                    setDeleteError(null);
+                    setPendingDeleteId(comment.id);
+                  }}
+                  onAuthorPress={authorId ? () => openAuthor(authorId) : undefined}
+                />
+              );
+            })}
             <View style={styles.bottomSpacer} />
           </ScrollView>
         )}

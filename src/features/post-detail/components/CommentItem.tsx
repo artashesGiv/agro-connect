@@ -2,8 +2,11 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Avatar, Menu, Text, type MD3Theme } from 'react-native-paper';
 
+import { ExpandableText } from '@/components/ExpandableText';
 import { Icon } from '@/components/Icon';
+import { ReputationBadge } from '@/components/ReputationBadge';
 import { useAppTheme } from '@/theme';
+import { formatDateTime } from '@/utils/formatDateTime';
 
 import type { Comment } from '../hooks/useComments';
 
@@ -12,32 +15,29 @@ type Props = {
   onVote: (value: -1 | 1) => void;
   onEdit: () => void;
   onDelete: () => void;
+  /** Не передаётся для ИИ-комментариев — у ИИ нет профиля. */
+  onAuthorPress?: () => void;
 };
 
-function formatWhen(iso: string): string {
-  const date = new Date(iso);
-  const day = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
-  const time = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-  return `${day}, ${time}`;
-}
-
-export function CommentItem({ comment, onVote, onEdit, onDelete }: Props) {
+export function CommentItem({ comment, onVote, onEdit, onDelete, onAuthorPress }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <View style={styles.row}>
-      {comment.author.avatarUrl ? (
-        <Avatar.Image size={28} source={{ uri: comment.author.avatarUrl }} />
-      ) : (
-        <Avatar.Icon
-          size={28}
-          icon={comment.isAi ? 'robot-outline' : 'account'}
-          style={styles.avatar}
-          color={comment.isAi ? theme.colors.primary : theme.colors.onSurfaceVariant}
-        />
-      )}
+      <Pressable onPress={onAuthorPress} disabled={!onAuthorPress}>
+        {comment.author.avatarUrl ? (
+          <Avatar.Image size={28} source={{ uri: comment.author.avatarUrl }} />
+        ) : (
+          <Avatar.Icon
+            size={28}
+            icon={comment.isAi ? 'robot-outline' : 'account'}
+            style={styles.avatar}
+            color={comment.isAi ? theme.colors.primary : theme.colors.onSurfaceVariant}
+          />
+        )}
+      </Pressable>
 
       <View style={styles.main}>
         <View style={styles.headerLine}>
@@ -45,15 +45,20 @@ export function CommentItem({ comment, onVote, onEdit, onDelete }: Props) {
             {comment.isAi ? (
               <Icon name="robot-outline" size={14} color={theme.colors.primary} />
             ) : null}
-            <Text
-              style={[styles.nickname, comment.isAi && { color: theme.colors.primary }]}
-              numberOfLines={1}
-            >
-              {comment.author.nickname}
-            </Text>
+            <Pressable onPress={onAuthorPress} disabled={!onAuthorPress}>
+              <Text
+                style={[styles.nickname, comment.isAi && { color: theme.colors.primary }]}
+                numberOfLines={1}
+              >
+                {comment.author.nickname}
+              </Text>
+            </Pressable>
+            {comment.author.reputation !== undefined ? (
+              <ReputationBadge value={comment.author.reputation} size={12} />
+            ) : null}
           </View>
           <Text style={styles.when}>
-            {formatWhen(comment.createdAt)}
+            {formatDateTime(comment.createdAt)}
             {comment.editedAt ? ' · изм.' : ''}
           </Text>
 
@@ -104,7 +109,7 @@ export function CommentItem({ comment, onVote, onEdit, onDelete }: Props) {
           ) : null}
         </View>
 
-        <Text style={styles.body}>{comment.body}</Text>
+        <ExpandableText style={styles.body}>{comment.body}</ExpandableText>
 
         {comment.isAi ? null : (
           <View style={styles.votes}>

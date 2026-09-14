@@ -3,10 +3,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
-  Button,
   Divider,
-  IconButton,
-  List,
   Snackbar,
   Text,
   type MD3Theme,
@@ -25,6 +22,7 @@ import { toggleReactionSummary } from '@/services/reactions';
 import { storage, toUserMessage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
 
+import { FieldsSection } from '../components/FieldsSection';
 import { ProfileHeader } from '../components/ProfileHeader';
 import {
   ProfileSectionTabs,
@@ -42,7 +40,7 @@ const OWN_PROFILE_PLACEHOLDERS = {
 /**
  * Вкладка «Профиль»: своя шапка (уведомления / @имя / настройки), карточка
  * профиля (общий компонент `ProfileInfo`, данные из строки `profiles`) и
- * переключатель секций «Мои посты / Закладки / Мои поля». «Мои посты» — реальные
+ * переключатель секций «Мои посты / Мои поля». «Мои посты» — реальные
  * посты автора из ленты (`useUserPosts`) с реакциями и счётчиком комментариев;
  * «Мои поля» — строки `fields`, которые правятся на вкладке «Карта».
  *
@@ -202,7 +200,7 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
 
   return (
     <View style={styles.root}>
-      <ProfileHeader />
+      <ProfileHeader navigation={navigation} />
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -213,6 +211,7 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
             specialization: profile?.specialization ?? undefined,
             region: profile?.region ?? undefined,
             avatarUrl,
+            reputation: profile?.reputation,
           }}
           placeholders={OWN_PROFILE_PLACEHOLDERS}
         />
@@ -220,15 +219,12 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
         <ProfileSectionTabs value={section} onChange={setSection} />
 
         <View style={styles.section}>
-          {section === 'bookmarks' ? (
-            <Text style={styles.stateText}>Закладки</Text>
-          ) : section === 'fields' ? (
+          {section === 'fields' ? (
             <FieldsSection
               fields={fields}
               loading={fieldsLoading}
               error={fieldsError}
-              styles={styles}
-              errorColor={theme.colors.error}
+              editable
               onOpen={openOnMap}
               onDelete={setPendingDeleteField}
             />
@@ -248,7 +244,7 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
                 title={post.title}
                 description={post.description}
                 images={post.images}
-                onPress={() => openPost(post.id)}
+                createdAt={post.createdAt}
                 reactions={post.reactions}
                 onToggleReaction={(code) => handleToggleReaction(post.id, code)}
                 commentCount={post.commentCount}
@@ -304,94 +300,6 @@ export default function ProfileScreen({ navigation, route }: ProfileScreenProps)
   );
 }
 
-type FieldsSectionProps = {
-  fields: Field[];
-  loading: boolean;
-  error: string | null;
-  styles: ReturnType<typeof makeStyles>;
-  errorColor: string;
-  onOpen: (fieldId: string | null, withCard: boolean) => void;
-  onDelete: (field: Field) => void;
-};
-
-/** Секция «Мои поля»: список, переход на карту и удаление. */
-function FieldsSection({
-  fields,
-  loading,
-  error,
-  styles,
-  errorColor,
-  onOpen,
-  onDelete,
-}: FieldsSectionProps) {
-  if (error) return <Text style={styles.stateText}>{error}</Text>;
-  if (loading && fields.length === 0) return <ActivityIndicator style={styles.loader} />;
-
-  if (fields.length === 0) {
-    return (
-      <View style={styles.empty}>
-        <Text style={styles.emptyText}>
-          Полей пока нет. Добавьте первое — карта откроется на вашем местоположении.
-        </Text>
-        <Button
-          mode="contained"
-          icon="plus"
-          onPress={() => onOpen(null, false)}
-          accessibilityLabel="Добавить поле на карте"
-        >
-          Добавить поле
-        </Button>
-      </View>
-    );
-  }
-
-  return (
-    <View>
-      <View style={styles.fieldsHeader}>
-        <IconButton
-          icon="plus"
-          size={20}
-          onPress={() => onOpen(null, false)}
-          accessibilityLabel="Добавить поле на карте"
-        />
-      </View>
-      {fields.map((field, index) => (
-        <View key={field.id}>
-          {index > 0 ? <Divider /> : null}
-          <List.Item
-            title={field.name}
-            description={describe(field)}
-            onPress={() => onOpen(field.id, false)}
-            right={() => (
-              <View style={styles.itemActions}>
-                <IconButton
-                  icon="pencil-outline"
-                  size={20}
-                  onPress={() => onOpen(field.id, true)}
-                  accessibilityLabel={`Редактировать поле ${field.name}`}
-                />
-                <IconButton
-                  icon="trash-can-outline"
-                  size={20}
-                  iconColor={errorColor}
-                  onPress={() => onDelete(field)}
-                  accessibilityLabel={`Удалить поле ${field.name}`}
-                />
-              </View>
-            )}
-          />
-        </View>
-      ))}
-    </View>
-  );
-}
-
-/** Вторая строка в списке: чем поле описано, тем и описываем. */
-function describe(field: Field): string {
-  const shape = field.boundary ? `контур, ${field.boundary.length} точек` : 'точка';
-  return field.region ? `${field.region} · ${shape}` : shape;
-}
-
 const makeStyles = (theme: MD3Theme) =>
   StyleSheet.create({
     root: {
@@ -414,26 +322,5 @@ const makeStyles = (theme: MD3Theme) =>
       textAlign: 'center',
       marginTop: 32,
       paddingHorizontal: 24,
-    },
-    fieldsHeader: {
-      flexDirection: 'row',
-      justifyContent: 'flex-end',
-      paddingRight: 4,
-    },
-    itemActions: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    empty: {
-      alignItems: 'center',
-      gap: 16,
-      marginTop: 32,
-      paddingHorizontal: 24,
-    },
-    emptyText: {
-      color: theme.colors.onSurfaceVariant,
-      fontSize: 16,
-      lineHeight: 22,
-      textAlign: 'center',
     },
   });

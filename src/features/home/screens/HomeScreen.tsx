@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -11,7 +11,11 @@ import {
 
 import { AppHeader } from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { CropFilterSelect } from '@/components/CropFilterSelect';
+import { ExpandingSearchField } from '@/components/ExpandingSearchField';
 import { PostCard } from '@/components/PostCard';
+import { useCrops } from '@/hooks/useCrops';
+import { useFeed, type FeedItem } from '@/hooks/useFeed';
 import { useReactions } from '@/hooks/useReactions';
 import type { HomeScreenProps } from '@/navigation/types';
 import { useAuth } from '@/services/auth';
@@ -20,7 +24,8 @@ import { toggleReactionSummary } from '@/services/reactions';
 import { toUserMessage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
 
-import { useFeed, type FeedItem } from '../hooks/useFeed';
+/** Пауза после последнего нажатия клавиши перед тем, как поиск уйдёт в запрос. */
+const SEARCH_DEBOUNCE_MS = 400;
 
 /**
  * Вкладка «Главная»: бесконечная лента всех постов. Первая страница 15 постов,
@@ -33,6 +38,25 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const { user } = useAuth();
   const { setReaction } = useReactions();
+  const { crops } = useCrops();
+
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [cropIds, setCropIds] = useState<number[]>([]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  const toggleSearch = useCallback(() => {
+    setSearchVisible((prev) => {
+      if (prev) setSearchInput('');
+      return !prev;
+    });
+  }, []);
+
   const {
     items,
     setItems,
@@ -45,7 +69,12 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     refresh,
     retry,
     syncItem,
-  } = useFeed();
+  } = useFeed({
+    cropIds: cropIds.length ? cropIds : undefined,
+    search: search || undefined,
+    postTypeCode: 'field_update',
+  });
+  const filtered = Boolean(search) || cropIds.length > 0;
 
   /** id поста, открытого в PostDetail/EditPost — перечитываем его при возврате. */
   const openedRef = useRef<string | null>(null);
@@ -77,6 +106,17 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const openFieldOnMap = useCallback(
     (fieldId: string) => {
       navigation.navigate('Map', { focusFieldId: fieldId, openCard: true });
+    },
+    [navigation],
+  );
+
+  const openAuthor = useCallback(
+    (authorId: string, isMine: boolean) => {
+      if (isMine) {
+        navigation.navigate('Profile');
+      } else {
+        navigation.navigate('UserProfile', { userId: authorId });
+      }
     },
     [navigation],
   );
@@ -142,7 +182,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           title={item.title}
           description={item.description}
           images={item.images}
-          onPress={() => openPost(item.id)}
+          onAuthorPress={() => openAuthor(item.author.id, item.isMine)}
+          createdAt={item.createdAt}
           reactions={item.reactions}
           onToggleReaction={(code) => handleToggleReaction(item.id, code)}
           commentCount={item.commentCount}
@@ -160,12 +201,29 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         />
       );
     },
-    [openPost, editPost, handleToggleReaction, openFieldOnMap],
+    [openPost, editPost, handleToggleReaction, openFieldOnMap, openAuthor],
   );
 
   return (
     <View style={styles.root}>
-      <AppHeader title="Главная" />
+      <AppHeader
+        titleSlot={
+          <ExpandingSearchField
+            visible={searchVisible}
+            value={searchInput}
+            onChangeText={setSearchInput}
+            title="Главная"
+          />
+        }
+        actions={[
+          {
+            icon: searchVisible ? 'close' : 'magnify',
+            onPress: toggleSearch,
+            accessibilityLabel: searchVisible ? 'Закрыть поиск' : 'Поиск',
+          },
+        ]}
+      />
+      <CropFilterSelect crops={crops} value={cropIds} onChange={setCropIds} />
 
       {loading ? (
         <ActivityIndicator style={styles.loader} />
@@ -188,7 +246,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />
           }
           ListEmptyComponent={
-            <Text style={styles.stateText}>Постов пока нет</Text>
+            <Text style={styles.stateText}>
+              {filtered ? 'Ничего не найдено' : 'Постов пока нет'}
+            </Text>
           }
           ListFooterComponent={
             loadingMore ? (

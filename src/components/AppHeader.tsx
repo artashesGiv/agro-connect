@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { StyleSheet } from 'react-native';
+import { useMemo, type ReactNode } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { Appbar, type MD3Theme } from 'react-native-paper';
 
 import { useAppTheme } from '@/theme';
@@ -19,6 +19,9 @@ type Props = {
   leading?: HeaderAction;
   /** Иконки справа. */
   actions?: HeaderAction[];
+  /** Заменяет заголовок произвольным содержимым (например, разворачивающимся
+   *  полем поиска). Остальной хром хедера (leading/actions) не меняется. */
+  titleSlot?: ReactNode;
 };
 
 /**
@@ -26,7 +29,7 @@ type Props = {
  * слева, хайрлайн снизу. Нативные хедеры навигации выключены — панель рендерит
  * сам экран. `Appbar.Header` добавляет верхнюю safe-area врезку.
  */
-export function AppHeader({ title, onBack, leading, actions = [] }: Props) {
+export function AppHeader({ title, onBack, leading, actions = [], titleSlot }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
 
@@ -42,7 +45,11 @@ export function AppHeader({ title, onBack, leading, actions = [] }: Props) {
         />
       ) : null}
 
-      <Appbar.Content title={title ?? ''} titleStyle={styles.title} />
+      {titleSlot ? (
+        <View style={styles.titleSlot}>{titleSlot}</View>
+      ) : (
+        <Appbar.Content title={title ?? ''} titleStyle={styles.title} />
+      )}
 
       {actions.map((action) => (
         <Appbar.Action
@@ -67,5 +74,9 @@ const makeStyles = (theme: MD3Theme) =>
       fontSize: 18,
       fontWeight: '700',
       color: theme.colors.onSurface,
+    },
+    titleSlot: {
+      flex: 1,
+      alignSelf: 'stretch',
     },
   });

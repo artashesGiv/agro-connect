@@ -92,7 +92,7 @@ export default function CreatePreviewScreen({
 
   return (
     <CreateStepLayout
-      step={5}
+      step={4}
       title={isEdit ? 'Проверьте изменения' : 'Проверьте пост'}
       subtitle="Так он будет выглядеть в ленте."
       onBack={navigation.goBack}
@@ -102,7 +102,12 @@ export default function CreatePreviewScreen({
     >
       <View style={styles.previewWrap}>
         <PostCard
-          author={{ nickname: profile?.name ?? 'вы', avatarUrl }}
+          author={{
+            id: user?.id ?? '',
+            nickname: profile?.name ?? 'вы',
+            avatarUrl,
+            reputation: profile?.reputation ?? 0,
+          }}
           title={values.title}
           description={values.body || undefined}
           images={values.photos.map((photo) =>

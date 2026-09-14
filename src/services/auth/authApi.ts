@@ -43,3 +43,19 @@ export async function getSession(): Promise<Session | null> {
   if (error) throw error;
   return data.session;
 }
+
+/**
+ * Бэкенд не требует текущий пароль для смены — `updateUser` работает на
+ * активной сессии. Экран запрашивает его как доп. UX-барьер, поэтому проверяем
+ * сами через повторный вход; код ошибки от Supabase здесь неинформативен для
+ * пользователя, поэтому кидаем свой текст.
+ */
+export async function verifyPassword(email: string, password: string): Promise<void> {
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw new Error('Неверный текущий пароль.');
+}
+
+export async function updatePassword(password: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) throw error;
+}

@@ -18,10 +18,11 @@ export type ProfilePost = {
   /** `code` из справочника post_types — нужен экрану редактирования. */
   postTypeCode: string;
   fieldId: string | null;
-  author: { nickname: string; avatarUrl?: string };
+  author: { id: string; nickname: string; avatarUrl?: string; reputation: number };
   title: string;
   description?: string;
   images: string[];
+  createdAt: string;
   /** По одному элементу на активный тип реакции, в порядке справочника. */
   reactions: ReactionSummary[];
   commentCount: number;
@@ -38,13 +39,16 @@ function mapPost(
     postTypeCode: post.post_types?.code ?? 'field_update',
     fieldId: post.field_id,
     author: {
+      id: post.profiles?.id ?? '',
       nickname: post.profiles?.name ?? 'без имени',
       avatarUrl: post.profiles?.avatar_path
         ? storage.getAvatarUrl(post.profiles.avatar_path)
         : undefined,
+      reputation: post.profiles?.reputation ?? 0,
     },
     title: post.title ?? 'Без заголовка',
     description: post.body ?? undefined,
+    createdAt: post.created_at,
     images: [...post.post_media]
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((media) => urls[media.storage_path])
