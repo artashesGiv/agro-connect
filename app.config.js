@@ -14,7 +14,7 @@ module.exports = {
       package: 'com.a1.contestapp',
       versionCode: 1,
       adaptiveIcon: {
-        backgroundColor: '#E6F4FE',
+        backgroundColor: '#F6EBD2',
         foregroundImage: './assets/android-icon-foreground.png',
         backgroundImage: './assets/android-icon-background.png',
         monochromeImage: './assets/android-icon-monochrome.png',
