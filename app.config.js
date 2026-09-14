@@ -1,6 +1,6 @@
 module.exports = {
   expo: {
-    name: 'Contest App',
+    name: 'Земляк',
     slug: 'contest-app',
     version: '1.0.0',
     orientation: 'portrait',
