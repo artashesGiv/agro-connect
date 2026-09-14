@@ -144,6 +144,10 @@ export function CommentItem({
 
         <ExpandableText style={styles.body}>{comment.body}</ExpandableText>
 
+        {comment.replyToName ? (
+          <Text style={styles.replyToLabel}>Ответ {comment.replyToName}</Text>
+        ) : null}
+
         {comment.isAi ? null : (
           <View style={styles.votes}>
             <Pressable
@@ -183,9 +187,6 @@ export function CommentItem({
               >
                 <Text style={styles.replyButtonText}>Ответить</Text>
               </Pressable>
-            ) : null}
-            {comment.replyToName ? (
-              <Text style={styles.replyToLabel}>Ответ {comment.replyToName}</Text>
             ) : null}
           </View>
         )}
@@ -271,7 +272,7 @@ const makeStyles = (theme: MD3Theme) =>
       color: theme.colors.primary,
       fontSize: 12,
       fontWeight: '600',
-      marginLeft: 4,
+      marginTop: 2,
     },
     body: {
       color: theme.colors.onSurface,

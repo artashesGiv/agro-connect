@@ -10,6 +10,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
+  Button,
   Divider,
   Snackbar,
   Text,
@@ -20,9 +21,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppHeader } from '@/components/AppHeader';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PostCard } from '@/components/PostCard';
+import { PostSummarySheet } from '@/components/PostSummarySheet';
 import { useReactions } from '@/hooks/useReactions';
 import type { PostDetailScreenProps } from '@/navigation/types';
 import { useAuth } from '@/services/auth';
+import { requestPostSummary } from '@/services/postSummary';
 import { deletePost, getPost } from '@/services/posts';
 import {
   summarizeReactions,
@@ -123,6 +126,10 @@ export default function PostDetailScreen({
   const [pendingDeletePost, setPendingDeletePost] = useState(false);
   const [deletingPost, setDeletingPost] = useState(false);
   const [postDeleteError, setPostDeleteError] = useState<string | null>(null);
+  /** Не сохраняется между заходами на экран — сигнал «готово» даёт уведомление. */
+  const [activeSummaryJobId, setActiveSummaryJobId] = useState<string | null>(null);
+  const [requestingSummary, setRequestingSummary] = useState(false);
+  const [openSummarySheetJobId, setOpenSummarySheetJobId] = useState<string | null>(null);
 
   const loadPost = useCallback(async () => {
     setLoadingPost(true);
@@ -171,7 +178,15 @@ export default function PostDetailScreen({
     useCallback(() => {
       void loadPost();
       void reloadComments();
-    }, [loadPost, reloadComments]),
+      // Пришли по тапу на уведомление о готовом/неудавшемся AI-разборе —
+      // сразу открываем окно с результатом и чистим параметр, иначе
+      // повторное открытие экрана переиграло бы переход.
+      const jobId = route.params.openSummaryJobId;
+      if (jobId) {
+        navigation.setParams({ openSummaryJobId: undefined });
+        setOpenSummarySheetJobId(jobId);
+      }
+    }, [loadPost, reloadComments, route.params.openSummaryJobId, navigation]),
   );
 
   const handleRefresh = useCallback(async () => {
@@ -254,6 +269,23 @@ export default function PostDetailScreen({
       setDeletingPost(false);
     }
   }, [postId, navigation]);
+
+  const handleRequestSummary = useCallback(async () => {
+    setRequestingSummary(true);
+    try {
+      const result = await requestPostSummary(postId);
+      setActiveSummaryJobId(result.job_id);
+      if (result.status === 'completed') {
+        setOpenSummarySheetJobId(result.job_id);
+      } else {
+        setActionError('Вам придёт уведомление, когда сводка будет готова');
+      }
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : 'Не удалось запустить разбор.');
+    } finally {
+      setRequestingSummary(false);
+    }
+  }, [postId]);
 
   const openAuthor = useCallback(
     (authorId: string) => {
@@ -361,6 +393,19 @@ export default function PostDetailScreen({
               />
             ) : null}
 
+            {post ? (
+              <Button
+                mode="outlined"
+                icon="robot-outline"
+                onPress={() => void handleRequestSummary()}
+                loading={requestingSummary}
+                disabled={requestingSummary || activeSummaryJobId !== null}
+                style={styles.summaryButton}
+              >
+                {activeSummaryJobId ? 'Разбор готовится' : 'Сделать AI-разбор'}
+              </Button>
+            ) : null}
+
             <Divider />
 
             {commentsError ? (
@@ -466,6 +511,11 @@ export default function PostDetailScreen({
       >
         {actionError ?? ''}
       </Snackbar>
+
+      <PostSummarySheet
+        jobId={openSummarySheetJobId}
+        onClose={() => setOpenSummarySheetJobId(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -495,5 +545,10 @@ const makeStyles = (theme: MD3Theme) =>
     },
     bottomSpacer: {
       height: 8,
+    },
+    summaryButton: {
+      marginHorizontal: 16,
+      marginTop: 8,
+      marginBottom: 8,
     },
   });

@@ -13,6 +13,8 @@ export type NotificationType =
   | 'reputation_star_up'
   | 'post_reaction'
   | 'answer_vote'
+  | 'post_summary_ready'
+  | 'post_summary_failed'
   | 'system';
 
 /** Строк достаточно много, чтобы пагинация не понадобилась — поллинг раз в 5с и так держит список свежим. */

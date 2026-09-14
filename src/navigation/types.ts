@@ -29,7 +29,10 @@ export type RootTabParamList = {
  */
 export type AppStackParamList = {
   Tabs: NavigatorScreenParams<RootTabParamList> | undefined;
-  PostDetail: { postId: string };
+  /** `openSummaryJobId` — открыть окно с готовым AI-разбором сразу после
+   *  перехода (тап по уведомлению `post_summary_ready`/`post_summary_failed`).
+   *  Экран чистит параметр сам, как только откроет окно. */
+  PostDetail: { postId: string; openSummaryJobId?: string };
   EditPost: { postId: string };
   Settings: undefined;
   EditProfile: undefined;

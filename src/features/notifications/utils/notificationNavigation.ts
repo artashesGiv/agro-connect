@@ -31,6 +31,16 @@ export function openNotification(
       }
       return;
     }
+    case 'post_summary_ready':
+    case 'post_summary_failed': {
+      if (typeof data.post_id === 'string' && typeof data.summary_job_id === 'string') {
+        navigation.navigate('PostDetail', {
+          postId: data.post_id,
+          openSummaryJobId: data.summary_job_id,
+        });
+      }
+      return;
+    }
     case 'weather_alert': {
       if (typeof data.field_id === 'string') {
         navigation.navigate('Tabs', {
