@@ -48,7 +48,8 @@ export default function CreateFieldScreen({ navigation }: CreateFieldScreenProps
     ...fields.map((field) => ({
       id: field.id,
       name: field.name,
-      description: field.region ?? undefined,
+      description:
+        [field.region, field.current_crop?.name].filter(Boolean).join(' · ') || undefined,
     })),
   ];
 
