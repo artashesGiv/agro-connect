@@ -16,7 +16,7 @@
 export type LngLat = [number, number];
 
 /** Куда садимся, если местоположение получить не удалось. */
-export const FALLBACK_CENTER: LngLat = [37.6173, 55.7558]; // Москва
+export const FALLBACK_CENTER: LngLat = [49.1064, 55.7887]; // Казань
 export const FALLBACK_ZOOM = 10;
 
 /** Зум при показе местоположения пользователя. */
