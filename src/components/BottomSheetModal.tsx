@@ -5,6 +5,7 @@ import {
   Pressable,
   StyleSheet,
   useWindowDimensions,
+  View,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -121,7 +122,7 @@ export function BottomSheetModal({ visible, onClose, children, contentStyle }: P
         style={[styles.sheetPosition, { transform: [{ translateY }] }]}
         pointerEvents="box-none"
       >
-        <Pressable
+        <View
           style={[
             styles.sheet,
             {
@@ -131,10 +132,9 @@ export function BottomSheetModal({ visible, onClose, children, contentStyle }: P
             },
             contentStyle,
           ]}
-          onPress={() => {}}
         >
           {children}
-        </Pressable>
+        </View>
       </Animated.View>
     </Portal>
   );

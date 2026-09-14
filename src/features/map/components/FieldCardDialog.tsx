@@ -7,6 +7,8 @@ import { Icon } from '@/components/Icon';
 import { dictionaries, type PostStage } from '@/services/supabase';
 import { useAppTheme } from '@/theme';
 
+import { FieldWeatherDialog } from './FieldWeatherDialog';
+
 import type { Field } from '@/services/fields';
 
 type FieldCardDialogProps = {
@@ -47,6 +49,7 @@ export function FieldCardDialog({
   const theme = useAppTheme();
   const styles = useMemo(() => makeStyles(theme), [theme]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [weatherOpen, setWeatherOpen] = useState(false);
   const [stages, setStages] = useState<PostStage[]>([]);
 
   // Справочник маленький (5 строк) и не критичен: не находим имя — просто
@@ -64,6 +67,7 @@ export function FieldCardDialog({
     : 'не указан';
 
   return (
+    <>
     <BottomSheetModal visible={field !== null} onClose={onClose}>
         <View style={styles.header}>
           <Text
@@ -73,6 +77,11 @@ export function FieldCardDialog({
           >
             {field?.name ?? ''}
           </Text>
+          <IconButton
+            icon="weather-cloudy"
+            onPress={() => setWeatherOpen(true)}
+            accessibilityLabel="Погода на поле"
+          />
           {isMine ? (
             <Menu
               visible={menuOpen}
@@ -169,6 +178,14 @@ export function FieldCardDialog({
           {!isMine ? <Button onPress={onViewOwner}>Профиль</Button> : null}
         </View>
     </BottomSheetModal>
+
+    <FieldWeatherDialog
+      fieldId={field?.id ?? null}
+      fieldName={field?.name ?? ''}
+      visible={weatherOpen}
+      onClose={() => setWeatherOpen(false)}
+    />
+    </>
   );
 }
 
